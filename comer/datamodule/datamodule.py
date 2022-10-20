@@ -14,6 +14,7 @@ from torch.utils.data.dataloader import DataLoader
 from .vocab import vocab
 
 Data = List[Tuple[str, Image.Image, List[str]]]
+BatchList = List[Tuple[List[str], List[Image.Image], List[List[str]]]]
 
 MAX_SIZE = 32e4  # change here accroading to your GPU memory
 

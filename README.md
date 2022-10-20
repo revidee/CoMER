@@ -37,19 +37,19 @@ cd CoMER
 # install project   
 conda create -y -n CoMER python=3.7
 conda activate CoMER
-conda install pytorch=1.8.1 torchvision=0.2.2 cudatoolkit=11.1 pillow=8.4.0 -c pytorch -c nvidia
-# training dependency
-conda install pytorch-lightning=1.4.9 torchmetrics=0.6.0 -c conda-forge
+# install pytorch >= 1.8 & torchvision >= 0.2 with cudatoolkit / rocm.
+conda install pytorch=1.8.1 torchvision=0.2.2 cudatoolkit=11.1 -c pytorch -c nvidia
+pip install -e .
 # evaluating dependency
 conda install pandoc=1.19.2.1 -c conda-forge
-pip install -e .
+
  ```
 
 ## Training
 Next, navigate to CoMER folder and run `train.py`. It may take **7~8** hours on **4** NVIDIA 2080Ti gpus using ddp.
 ```bash
 # train CoMER(Fusion) model using 4 gpus and ddp
-python train.py --config config.yaml  
+python train.py -c config.yaml fit
 ```
 
 You may change the `config.yaml` file to train different models
@@ -73,6 +73,7 @@ self_coverage: true
 
 For single gpu user, you may change the `config.yaml` file to
 ```yaml
+# TODO: Devices syntax change
 gpus: 1
 # gpus: 4
 # accelerator: ddp

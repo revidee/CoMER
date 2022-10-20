@@ -132,7 +132,8 @@ class DecodeModel(pl.LightningModule):
         scores = torch.cat((l2r_scores, r2l_scores), dim=1)
         # [batch_size, ]
         best_scores, best_indices = torch.max(scores, dim=1)
-        best_split = best_indices // beam_size
+        best_split = torch.div(best_indices, beam_size, rounding_mode='trunc')
+
         best_indices = best_indices % beam_size
         batch_indices = torch.arange(
             0, batch_size // 2, dtype=torch.long, device=self.device
@@ -203,7 +204,7 @@ class DecodeModel(pl.LightningModule):
                 next_token_scores, 2 * beam_size, dim=1
             )
 
-            next_indices = next_tokens // vocab_size
+            next_indices = torch.div(next_tokens, vocab_size, rounding_mode='trunc')
             next_tokens = next_tokens % vocab_size
 
             if cur_len == 1:

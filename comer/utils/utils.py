@@ -40,9 +40,9 @@ class Hypothesis:
 
 
 class ExpRateRecorder(Metric):
+    full_state_update = False
     def __init__(self, dist_sync_on_step=False):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
-
         self.add_state("total_line", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("rec", default=torch.tensor(0.0), dist_reduce_fx="sum")
 
@@ -61,7 +61,6 @@ class ExpRateRecorder(Metric):
     def compute(self) -> float:
         exp_rate = self.rec / self.total_line
         return exp_rate
-
 
 def ce_loss(
     output_hat: torch.Tensor,
