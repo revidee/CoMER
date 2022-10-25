@@ -15,13 +15,17 @@ fit:
           monitor: val_ExpRate
           mode: max
           filename: '{epoch}-{step}-{val_ExpRate:.4f}'
-    accelerator: cpu
+    # accelerator: 'cpu'
+    # fast_dev_run: True
+    accelerator: 'gpu'
+    devices: 0, 1
+    strategy:
+      class_path: pytorch_lightning.strategies.ddp.DDPStrategy
+      init_args:
+        find_unused_parameters: False
     check_val_every_n_epoch: 2
     max_epochs: 300
     deterministic: true
-    fast_dev_run: True
-      # gpus: 1
-      # gpus: 0, 1, 2, 3
   model:
     d_model: 256
     # encoder
@@ -45,7 +49,7 @@ fit:
     learning_rate: 0.08
     patience: 20
   data:
-    zipfile_path: data.zip
+    zipfile_path: /data/mahlers/data.zip
     test_year: "2019"
     train_batch_size: 8
     eval_batch_size: 4
