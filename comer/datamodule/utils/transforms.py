@@ -1,9 +1,5 @@
-from typing import List
-
 import cv2
 import numpy as np
-import torch
-from torch import Tensor
 
 
 class ScaleToLimitRange:

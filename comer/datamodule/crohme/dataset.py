@@ -1,7 +1,10 @@
+from typing import List
+
 import torchvision.transforms as tr
 from torch.utils.data.dataset import Dataset
 
-from .transforms import ScaleAugmentation, ScaleToLimitRange
+from comer.datamodule.crohme import BatchTuple
+from comer.datamodule.utils.transforms import ScaleAugmentation, ScaleToLimitRange
 
 K_MIN = 0.7
 K_MAX = 1.4
@@ -13,7 +16,9 @@ W_HI = 1024
 
 
 class CROHMEDataset(Dataset):
-    def __init__(self, ds, is_train: bool, scale_aug: bool) -> None:
+    ds: List[BatchTuple]
+
+    def __init__(self, ds: List[BatchTuple], is_train: bool, scale_aug: bool) -> None:
         super().__init__()
         self.ds = ds
 
@@ -28,11 +33,11 @@ class CROHMEDataset(Dataset):
         self.transform = tr.Compose(trans_list)
 
     def __getitem__(self, idx):
-        fname, img, caption = self.ds[idx]
+        file_names, images, labels = self.ds[idx]
 
-        img = [self.transform(im) for im in img]
+        images = [self.transform(im) for im in images]
 
-        return fname, img, caption
+        return file_names, images, labels
 
     def __len__(self):
         return len(self.ds)

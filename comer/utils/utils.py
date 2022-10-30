@@ -1,5 +1,6 @@
 from typing import List, Optional, Tuple, Union
 
+import numpy
 import torch
 import torch.nn.functional as F
 from comer.datamodule import vocab
@@ -85,7 +86,7 @@ def ce_loss(
 
 
 def to_tgt_output(
-    tokens: Union[List[List[int]], List[LongTensor]],
+    batched_tokens: Union[List[List[int]], List[LongTensor]],
     direction: str,
     device: torch.device,
     pad_to_len: Optional[int] = None,
@@ -94,7 +95,7 @@ def to_tgt_output(
 
     Parameters
     ----------
-    tokens : Union[List[List[int]], List[LongTensor]]
+    batched_tokens : Union[List[List[int]], List[LongTensor]]
         indices: [b, l]
     direction : str
         one of "l2f" and "r2l"
@@ -107,20 +108,20 @@ def to_tgt_output(
     """
     assert direction in {"l2r", "r2l"}
 
-    if isinstance(tokens[0], list):
-        tokens = [torch.tensor(t, dtype=torch.long) for t in tokens]
+    if isinstance(batched_tokens[0], list):
+        batched_tokens = [torch.tensor(single_tokens, dtype=torch.long) for single_tokens in batched_tokens]
 
     if direction == "l2r":
-        tokens = tokens
+        batched_tokens = batched_tokens
         start_w = vocab.SOS_IDX
         stop_w = vocab.EOS_IDX
     else:
-        tokens = [torch.flip(t, dims=[0]) for t in tokens]
+        batched_tokens = [torch.flip(single_tokens, dims=[0]) for single_tokens in batched_tokens]
         start_w = vocab.EOS_IDX
         stop_w = vocab.SOS_IDX
 
-    batch_size = len(tokens)
-    lens = [len(t) for t in tokens]
+    batch_size = len(batched_tokens)
+    lens = [len(t) for t in batched_tokens]
 
     length = max(lens) + 1
     if pad_to_len is not None:
@@ -139,10 +140,13 @@ def to_tgt_output(
         device=device,
     )
 
-    for i, token in enumerate(tokens):
+    # Fill the Teacher-Forcing "target" tensor and the Ouput "target" tensor which is used to compute the loss.
+    for i, token in enumerate(batched_tokens):
+        # teacher forcing input: <SOS> <token1> <token2> <...> <tokenN> <optional-pad> <optional-pad> (l2r)
         tgt[i, 0] = start_w
         tgt[i, 1 : (1 + lens[i])] = token
 
+        # expected model output: <token1> <...> <tokenN> <EOS> <optional-pad> <optional-pad> (l2r)
         out[i, : lens[i]] = token
         out[i, lens[i]] = stop_w
 
