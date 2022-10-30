@@ -1,7 +1,7 @@
 import os
 
 import typer
-from comer.datamodule import CROHMEDatamodule
+from comer.datamodule import CROHMESupvervisedDatamodule
 from comer.lit_comer import LitCoMER
 from pytorch_lightning import Trainer, seed_everything
 
@@ -18,7 +18,7 @@ def main(version: str, test_year: str):
 
     trainer = Trainer(logger=False, gpus=1)
 
-    dm = CROHMEDatamodule(test_year=test_year, eval_batch_size=4)
+    dm = CROHMESupvervisedDatamodule(test_year=test_year, eval_batch_size=4)
 
     model = LitCoMER.load_from_checkpoint(ckp_path)
 

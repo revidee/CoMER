@@ -5,7 +5,7 @@ import torch.nn as nn
 from einops import rearrange
 from torch import FloatTensor, LongTensor
 
-from comer.datamodule import vocab, vocab_size
+from comer.datamodule.crohme import vocab, vocab_size
 from comer.model.pos_enc import WordPosEnc
 from comer.model.transformer.arm import AttentionRefinementModule
 from comer.model.transformer.transformer_decoder import (

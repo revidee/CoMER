@@ -34,7 +34,8 @@
 ## Install dependencies   
 ```bash
 cd CoMER
-# install project   
+# install project 
+# python >= 3.7 required. Tested with 3.7 & 3.10
 conda create -y -n CoMER python=3.7
 conda activate CoMER
 # install pytorch >= 1.8 & torchvision >= 0.2 with cudatoolkit / rocm.
@@ -48,7 +49,7 @@ conda install pandoc=1.19.2.1 -c conda-forge
 ## Training
 Next, navigate to CoMER folder and run `train.py`. It may take **7~8** hours on **4** NVIDIA 2080Ti gpus using ddp.
 ```bash
-# train CoMER(Fusion) model using 4 gpus and ddp
+# train CoMER(Fusion) model using 2 gpus and ddp
 python train.py -c config.yaml fit
 ```
 
@@ -71,18 +72,22 @@ cross_coverage: true
 self_coverage: true
 ```
 
-For single gpu user, you may change the `config.yaml` file to
+For _single_ `gpu` usage, you may edit the `config.yaml`:
 ```yaml
-# TODO: Devices syntax change
-gpus: 1
-# gpus: 4
-# accelerator: ddp
+accelerator: 'gpu'
+devices: 0
+```
+
+For _single_ `cpu` user, you may edit the `config.yaml`:
+```yaml
+accelerator: 'cpu'
+# devices: 0
 ```
 
 ## Evaluation
 Metrics used in validation during the training process is not accurate.
 
-For accurate metrics reported in the paper, please use tools officially provided by CROHME 2019 oganizer:
+For accurate metrics reported in the paper, please use tools officially provided by CROHME 2019 organizer:
 
 A trained CoMER(Fusion) weight checkpoint has been saved in `lightning_logs/version_0`
 

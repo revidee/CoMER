@@ -1,7 +1,8 @@
 from dataclasses import dataclass
-from typing import TypedDict, List
+from typing import List, Any
 from zipfile import ZipFile
 
+import numpy as np
 from PIL import Image
 
 
@@ -12,7 +13,7 @@ class DataEntry:
     label: List[str]
 
 
-def extract_data_entries(archive: ZipFile, dir_name: str) -> List[DataEntry]:
+def extract_data_entries(archive: ZipFile, dir_name: str) -> np.ndarray[Any, np.dtype[DataEntry]]:
     """Extract all data need for a dataset from zip archive
 
     Args:
@@ -36,4 +37,4 @@ def extract_data_entries(archive: ZipFile, dir_name: str) -> List[DataEntry]:
 
     print(f"Extract data from: {dir_name}, with data size: {len(data)}")
 
-    return data
+    return np.array(data)
