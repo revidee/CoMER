@@ -1,0 +1,8 @@
+# IMPORTANT: Extends the base supervised.yaml
+# This config file needs to be imported into the Lightning CLI /after/ the base supervised.yaml.
+# e.g. train.py -c supervised.yaml -c this.yaml
+fit:
+  model:
+    class_path: comer.modules.CoMERSelfTraining
+  data:
+    class_path: comer.datamodules.CROHMESelfTrainingDatamodule

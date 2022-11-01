@@ -4,11 +4,11 @@ from zipfile import ZipFile
 
 import pytorch_lightning as pl
 
-from comer.datamodule.crohme.batch import create_batch_from_lists
-from comer.datamodule.crohme.dataset import CROHMEDataset
+from comer.datamodules.crohme.batch import create_batch_from_lists
+from comer.datamodules.crohme.dataset import CROHMEDataset
 from torch.utils.data.dataloader import DataLoader
 
-from comer.datamodule.crohme import Batch, build_dataset, BatchTuple
+from comer.datamodules.crohme import Batch, build_dataset, BatchTuple
 
 
 # Used to transform a Lighting-Batch into some other form (here, our custom Batch)

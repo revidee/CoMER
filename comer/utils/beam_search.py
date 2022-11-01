@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
 import torch
-from comer.datamodule.crohme import vocab
+from comer.datamodules.crohme import vocab
 from torch import FloatTensor, LongTensor
 
 

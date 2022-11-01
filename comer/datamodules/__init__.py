@@ -1,0 +1,2 @@
+from comer.datamodules.crohme.variants.supervised import CROHMESupvervisedDatamodule
+from comer.datamodules.crohme.variants.self_training import CROHMESelfTrainingDatamodule

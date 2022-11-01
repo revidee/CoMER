@@ -1,8 +1,8 @@
 import os
 
 import typer
-from comer.datamodule import CROHMESupvervisedDatamodule
-from comer.lit_comer import LitCoMER
+from comer.datamodules import CROHMESupvervisedDatamodule
+from comer.modules.lit_comer import LitCoMER
 from pytorch_lightning import Trainer, seed_everything
 
 seed_everything(7)

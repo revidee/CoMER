@@ -1,5 +1,5 @@
 from .entry import DataEntry, extract_data_entries
-from .batch import Batch, BatchTuple, build_dataset
+from .batch import Batch, BatchTuple, build_dataset, create_batch_from_lists
 from .dataset import CROHMEDataset
 from .variants.supervised import CROHMESupvervisedDatamodule
 from .vocab import vocab

@@ -4,7 +4,7 @@ from typing import List, Tuple
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-from comer.datamodule.crohme import vocab, vocab_size
+from comer.datamodules.crohme import vocab, vocab_size
 from comer.utils.utils import Hypothesis, ce_loss, to_tgt_output
 from einops import rearrange
 from einops.einops import repeat

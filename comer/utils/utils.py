@@ -2,7 +2,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
-from comer.datamodule.crohme import vocab
+from comer.datamodules.crohme import vocab
 from einops import rearrange
 from torch import LongTensor
 from torchmetrics import Metric

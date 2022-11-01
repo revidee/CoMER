@@ -5,13 +5,13 @@ import pytorch_lightning as pl
 import torch.optim as optim
 from torch import FloatTensor, LongTensor
 
-from comer.datamodule.crohme import vocab, Batch
+from comer.datamodules.crohme import vocab, Batch
 from comer.model.comer import CoMER
 from comer.utils.utils import (ExpRateRecorder, Hypothesis, ce_loss,
                                to_bi_tgt_out)
 
 
-class LitCoMER(pl.LightningModule):
+class CoMERSupervised(pl.LightningModule):
     def __init__(
         self,
         d_model: int,
@@ -53,7 +53,6 @@ class LitCoMER(pl.LightningModule):
         )
 
         self.exprate_recorder = ExpRateRecorder()
-
     def forward(
         self, img: FloatTensor, img_mask: LongTensor, tgt: LongTensor
     ) -> FloatTensor:
