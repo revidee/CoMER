@@ -140,7 +140,10 @@ def build_batches_from_samples(
 
     for entry in data_sorted:
         size = get_entry_image_pixels(entry)
-        image_arr = np.array(entry.image)
+        if is_pil_image:
+            image_arr = np.array(entry.image)
+        else:
+            image_arr = entry.image
         if size > biggest_image_size:
             biggest_image_size = size
         batch_image_size = biggest_image_size * (i + 1)
