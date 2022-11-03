@@ -42,7 +42,7 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
             ConcatDataset([
                 self.train_labeled_dataset, self.train_unlabeled_dataset
             ]),
-            shuffle=False,
+            shuffle=True,
             num_workers=self.num_workers,
             collate_fn=collate_fn,
         )

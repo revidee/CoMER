@@ -1,9 +1,11 @@
 from dataclasses import dataclass
-from typing import List, Any
+from typing import List, Any, Optional
 from zipfile import ZipFile
 
 import numpy as np
+import torch
 from PIL import Image
+from torchvision.transforms import ToTensor
 
 
 @dataclass
@@ -13,7 +15,10 @@ class DataEntry:
     label: List[str]
 
 
-def extract_data_entries(archive: ZipFile, dir_name: str) -> np.ndarray[Any, np.dtype[DataEntry]]:
+def extract_data_entries(archive: ZipFile, dir_name: str,
+                         to_device: Optional[torch.device] = None,
+                         max_size: Optional[int] = None,
+                         random_seed: Optional[int] = None) -> 'np.ndarray[Any, np.dtype[DataEntry]]':
     """Extract all data need for a dataset from zip archive
 
     Args:
@@ -33,6 +38,11 @@ def extract_data_entries(archive: ZipFile, dir_name: str) -> np.ndarray[Any, np.
         with archive.open(f"data/{dir_name}/img/{file_name}.bmp", "r") as f:
             # move image to memory immediately, avoid lazy loading, which will lead to None pointer error in loading
             img: Image.Image = Image.open(f).copy()
+
+            # Directly move the image to a target device.
+            # This is needed to call this method from a CPU context (i.e. when doing CLI inference / benching)
+            if to_device is not None:
+                img = ToTensor()(img).to(device=to_device)
         data.append(DataEntry(file_name, img, label))
 
     print(f"Extract data from: {dir_name}, with data size: {len(data)}")

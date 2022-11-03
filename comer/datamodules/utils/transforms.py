@@ -10,7 +10,7 @@ class ScaleToLimitRange:
         self.h_lo = h_lo
         self.h_hi = h_hi
 
-    def __call__(self, img: np.ndarray) -> np.ndarray:
+    def __call__(self, img: 'np.ndarray') -> 'np.ndarray':
         h, w = img.shape[:2]
         r = h / w
         lo_r = self.h_lo / self.w_hi
@@ -44,7 +44,7 @@ class ScaleAugmentation:
         self.lo = lo
         self.hi = hi
 
-    def __call__(self, img: np.ndarray) -> np.ndarray:
+    def __call__(self, img: 'np.ndarray') -> 'np.ndarray':
         k = np.random.uniform(self.lo, self.hi)
         img = cv2.resize(img, None, fx=k, fy=k, interpolation=cv2.INTER_LINEAR)
         return img

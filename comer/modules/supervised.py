@@ -75,7 +75,7 @@ class CoMERSupervised(pl.LightningModule):
         return self.comer_model(img, img_mask, tgt)
 
     def training_step(self, batch: Batch, _):
-        tgt, out = to_bi_tgt_out(batch.indices, self.device)
+        tgt, out = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 
         loss = ce_loss(out_hat, out)
@@ -84,7 +84,7 @@ class CoMERSupervised(pl.LightningModule):
         return loss
 
     def validation_step(self, batch: Batch, _):
-        tgt, out = to_bi_tgt_out(batch.indices, self.device)
+        tgt, out = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 
         loss = ce_loss(out_hat, out)
@@ -100,7 +100,7 @@ class CoMERSupervised(pl.LightningModule):
 
         hyps = self.approximate_joint_search(batch.imgs, batch.mask)
 
-        self.exprate_recorder([h.seq for h in hyps], batch.indices)
+        self.exprate_recorder([h.seq for h in hyps], batch.labels)
         self.log(
             "val_ExpRate",
             self.exprate_recorder,
@@ -112,7 +112,7 @@ class CoMERSupervised(pl.LightningModule):
 
     def test_step(self, batch: Batch, _):
         hyps = self.approximate_joint_search(batch.imgs, batch.mask)
-        self.exprate_recorder([h.seq for h in hyps], batch.indices)
+        self.exprate_recorder([h.seq for h in hyps], batch.labels)
         return batch.img_bases, [vocab.indices2label(h.seq) for h in hyps]
 
     def test_epoch_end(self, test_outputs) -> None:

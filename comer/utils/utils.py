@@ -153,7 +153,7 @@ def to_tgt_output(
 
 
 def to_bi_tgt_out(
-    tokens: List[List[int]], device: torch.device
+    tokens: List[List[int]], device: torch.device,
 ) -> Tuple[LongTensor, LongTensor]:
     """Generate bidirection tgt and out
 

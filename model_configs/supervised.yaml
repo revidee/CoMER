@@ -16,10 +16,10 @@ fit:
       - class_path: comer.callbacks.SelfTrainingUpdater
         init_args:
           confidence_threshold: 0.6
-    accelerator: 'cpu'
+#    accelerator: 'cpu'
     # fast_dev_run: True
-#    accelerator: 'gpu'
-#    devices: 0, 1
+    accelerator: 'gpu'
+    devices: 1,
     strategy:
       class_path: pytorch_lightning.strategies.ddp.DDPStrategy
       init_args:
