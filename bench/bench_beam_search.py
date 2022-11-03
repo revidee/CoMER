@@ -15,12 +15,14 @@ from comer.modules import CoMERSupervised
 checkpoint_path = "./bench/baseline_t112.ckpt"
 
 
-def main(batch_size: int = 2, seed: int = 1, gpu: int = 1,
+def main(batch_size: int = 2, seeds: List[int] = None, gpu: int = 1,
          benches: Optional[List[str]] = None):
     if benches is None:
         benches = ["biggest", "smallest", "random"]
+    if seeds is None:
+        seeds = [1]
     print("init benchmarking")
-    print("- seed: ", seed)
+    print("- seed: ", seeds)
     print("- batch_size: ", batch_size)
     print(f"- gpu: cuda:{gpu}")
     device = torch.device(f"cuda:{gpu}")
@@ -52,14 +54,15 @@ def main(batch_size: int = 2, seed: int = 1, gpu: int = 1,
                     device
                 ))
             if benches.count("random") > 0:
-                all_results.append(run_benchmarks(
-                    "Random Seeded",
-                    get_random_seeded(extract_data_entries(archive, "train", to_device=device), device, batch_size,
-                                      seed),
-                    batch_size,
-                    model,
-                    device
-                ))
+                for seed in seeds:
+                    all_results.append(run_benchmarks(
+                        f"Random Seeded ({seed})",
+                        get_random_seeded(extract_data_entries(archive, "train", to_device=device), device, batch_size,
+                                          seed),
+                        batch_size,
+                        model,
+                        device
+                    ))
 
             print_results(all_results, batch_size=batch_size, seed=seed)
 
