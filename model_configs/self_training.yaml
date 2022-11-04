@@ -3,9 +3,9 @@
 # e.g. train.py -c supervised.yaml -c this.yaml
 fit:
   seed_everything: 7
-
   trainer:
     enable_checkpointing: true
+    unlabeled_val_loop: true
     callbacks:
       - class_path: pytorch_lightning.callbacks.LearningRateMonitor
         init_args:
@@ -13,14 +13,18 @@ fit:
       - class_path: pytorch_lightning.callbacks.ModelCheckpoint
         init_args:
           save_top_k: 1
-          monitor: val_ExpRate
+          monitor: val_ExpRate/dataloader_idx_0
           mode: max
-          filename: '{epoch}-{step}-{val_ExpRate:.4f}'
+          filename: '{epoch}-{step}-{val_ExpRate/dataloader_idx_0:.4f}'
       - class_path: comer.callbacks.SelfTrainingUpdater
         init_args:
           confidence_threshold: 0.6
     accelerator: 'gpu'
-    devices: 0,
+    devices: 0,1
+    strategy:
+      class_path: comer.lit_extensions.DDPUnlabeledStrategy
+      init_args:
+        find_unused_parameters: False
     check_val_every_n_epoch: 2
     max_epochs: 300
     deterministic: true
