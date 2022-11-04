@@ -1,0 +1,1 @@
+python -m bench.bench_beam_search --seeds [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,131,231,1661,34] --batch_size 6

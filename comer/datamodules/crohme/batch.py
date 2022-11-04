@@ -108,7 +108,8 @@ def build_batches_from_samples(
         batch_imagesize: int = MAX_SIZE,
         maxlen: int = 200,
         max_imagesize: int = MAX_SIZE,
-        is_labled: bool = True
+        is_labled: bool = True,
+        include_last_only_full: bool = False
 ) -> List[BatchTuple]:
     if data.shape[0] == 0:
         return list()
@@ -183,7 +184,7 @@ def build_batches_from_samples(
             i += 1
 
     # add last batch if it isn't empty
-    if len(next_batch_file_names) > 0:
+    if len(next_batch_file_names) > 0 and (not include_last_only_full or len(next_batch_file_names) == batch_size):
         total_fname_batches.append(next_batch_file_names)
         total_feature_batches.append(next_batch_images)
         total_label_batches.append(next_batch_labels)
