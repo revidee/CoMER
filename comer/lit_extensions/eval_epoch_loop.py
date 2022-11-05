@@ -102,8 +102,8 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
         """
         kwargs.update(fetcher=fetcher, batch_progress=batch_progress)
         # `dataloader_idx` should be last so we need to push these to the front
-        kwargs.move_to_end("fetcher", last=False)
         kwargs.move_to_end("batch_progress", last=False)
+        kwargs.move_to_end("fetcher", last=False)
         return kwargs
 
     @lru_cache(1)

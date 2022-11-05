@@ -38,11 +38,11 @@ class CROHMEDataset(Dataset):
         self.transform = tr.Compose(trans_list)
 
     def __getitem__(self, idx):
-        file_names, images, labels, is_labled = self.ds[idx]
+        file_names, images, labels, is_labled, src_idx = self.ds[idx]
 
         images = [self.transform(im) for im in images]
 
-        return file_names, images, labels, is_labled
+        return file_names, images, labels, is_labled, src_idx
 
     def __len__(self):
         return len(self.ds)

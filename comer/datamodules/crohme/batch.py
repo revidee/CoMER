@@ -18,6 +18,7 @@ class Batch:
     mask: LongTensor  # [b, H, W]
     labels: List[List[int]]  # [b, l]
     is_labeled: bool
+    src_idx: int
 
     def __len__(self) -> int:
         return len(self.img_bases)
@@ -28,17 +29,18 @@ class Batch:
             imgs=self.imgs.to(device),
             mask=self.mask.to(device),
             labels=self.labels,
-            is_labeled=self.is_labeled
+            is_labeled=self.is_labeled,
+            src_idx=self.src_idx
         )
 
 
 # A BatchTuple represents a single batch which contains 3 lists of equal length (batch-len)
 # [file_names, images, labels, is_labeled]
-BatchTuple = Tuple[List[str], List['np.ndarray'], List[List[str]], List[bool]]
+BatchTuple = Tuple[List[str], List['np.ndarray'], List[List[str]], bool, int]
 
 
 # Creates a Batch of (potentially) annotated images which pads & masks the images, s.t. they fit into a single tensor.
-def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], labels: List[List[str]], is_labled: List[bool]) -> Batch:
+def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], labels: List[List[str]], is_labled: bool, src_idx: int) -> Batch:
     assert (len(file_names) == len(images) == len(images))
     labels_as_word_indices = [vocab.words2indices(x) for x in labels]
 
@@ -55,11 +57,11 @@ def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], l
         x[idx, :, : heights_x[idx], : widths_x[idx]] = img
         x_mask[idx, : heights_x[idx], : widths_x[idx]] = 0
 
-    return Batch(file_names, x, x_mask, labels_as_word_indices, is_labled[0])
+    return Batch(file_names, x, x_mask, labels_as_word_indices, is_labled, src_idx)
 
 
 # change according to your GPU memory
-MAX_SIZE = 32e4
+MAX_SIZE = int(32e4)
 
 
 def build_batch_split_from_entries(
@@ -116,12 +118,11 @@ def build_batches_from_samples(
     next_batch_file_names: List[str] = []
     next_batch_images: List['np.ndarray'] = []
     next_batch_labels: List[List[str]] = []
-    next_batch_is_labeled: List[bool] = []
 
     total_fname_batches: List[List[str]] = []
     total_feature_batches: List[List['np.ndarray']] = []
     total_label_batches: 'List[List[List[str]]]' = []
-    total_is_label_batches: List[List[bool]] = []
+    total_is_label_batches: List[bool] = []
 
     biggest_image_size = 0
     is_pil_image = isinstance(data[0].image, Image)
@@ -165,14 +166,13 @@ def build_batches_from_samples(
                 total_fname_batches.append(next_batch_file_names)
                 total_feature_batches.append(next_batch_images)
                 total_label_batches.append(next_batch_labels)
-                total_is_label_batches.append(next_batch_is_labeled)
+                total_is_label_batches.append(is_labled)
                 # reset current batch
                 i = 0
                 biggest_image_size = size
                 next_batch_file_names = []
                 next_batch_images = []
                 next_batch_labels = []
-                next_batch_is_labeled = []
             # add the entry to the current batch
             next_batch_file_names.append(entry.file_name)
             next_batch_images.append(image_arr)
@@ -180,7 +180,6 @@ def build_batches_from_samples(
                 next_batch_labels.append(entry.label)
             else:
                 next_batch_labels.append([])
-            next_batch_is_labeled.append(is_labled)
             i += 1
 
     # add last batch if it isn't empty
@@ -188,17 +187,18 @@ def build_batches_from_samples(
         total_fname_batches.append(next_batch_file_names)
         total_feature_batches.append(next_batch_images)
         total_label_batches.append(next_batch_labels)
-        total_is_label_batches.append(next_batch_is_labeled)
+        total_is_label_batches.append(is_labled)
 
     print(len(total_feature_batches), f"batches loaded (labled: {is_labled})")
     return list(
-        # Zips batches into a 4-Tuple Tuple[ List[str] , List[np.ndarray], List[List[str]], List[bool] ]
+        # Zips batches into a 4-Tuple Tuple[ List[str] , List[np.ndarray], List[List[str]], bool ]
         #                        Per batch:  file_names, images          , labels           is_labeled
         zip(
             total_fname_batches,
             total_feature_batches,
             total_label_batches,
-            total_is_label_batches
+            total_is_label_batches,
+            list(range(len(total_is_label_batches)))
         )
     )
 

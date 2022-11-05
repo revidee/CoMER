@@ -28,6 +28,7 @@ fit:
     check_val_every_n_epoch: 2
     max_epochs: 300
     deterministic: true
+    reload_dataloaders_every_n_epochs: 2
   model:
     class_path: comer.modules.CoMERSelfTraining
     init_args:

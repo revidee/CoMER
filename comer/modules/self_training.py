@@ -1,6 +1,10 @@
+import time
+from typing import List, Tuple, Iterable, Union
+
 from pytorch_lightning.trainer.progress import BatchProgress
-from pytorch_lightning.utilities.fetching import AbstractDataFetcher
+from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
 from torch import optim
+import torch.distributed as dist
 
 from comer.datamodules.crohme import Batch
 from comer.modules.supervised import CoMERSupervised
@@ -11,32 +15,28 @@ from comer.utils.utils import (ce_loss,
 
 class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
     def training_step(self, batch: Batch, _):
-        loss = None
-        if batch.is_labeled:
-            tgt, out = to_bi_tgt_out(batch.labels, self.device)
-            out_hat = self(batch.imgs, batch.mask, tgt)
+        tgt, out = to_bi_tgt_out(batch.labels, self.device)
+        out_hat = self(batch.imgs, batch.mask, tgt)
 
-            loss = ce_loss(out_hat, out)
-            self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch.imgs.shape[0])
-        elif self.trainer.current_epoch > 0:
-            pass
-            # Check what unlabeled images got pseudo-labels and train on them
-            # with torch.no_grad():
-            #     batch.labels = [h.seq for h in self.approximate_joint_search(batch.imgs, batch.mask)]
-            # np_labels = np.array(batch.labels, dtype=np.object)
-            # valid_unlabeled_samples = torch.BoolTensor([len(x) > 0 for x in batch.labels])
-            #
-            # if valid_unlabeled_samples.any():
-            #     # We do have "valid" pseudo-labels for self-training
-            #     # use them to train as usual
-            #     tgt, out = to_bi_tgt_out(np_labels[valid_unlabeled_samples.detach().numpy().astype(bool)].tolist(), self.device)
-            #     out_hat = self(batch.imgs[valid_unlabeled_samples], batch.mask[valid_unlabeled_samples], tgt)
-            #
-            #     loss = ce_loss(out_hat, out)
-            #     self.log("train_loss", loss, on_step=False, on_epoch=True,
-            #              sync_dist=True, batch_size=valid_unlabeled_samples.count_nonzero())
-            #     self.log("train_loss_unl", loss, on_step=False, on_epoch=True,
-            #              sync_dist=True, batch_size=valid_unlabeled_samples.count_nonzero())
+        loss = ce_loss(out_hat, out)
+        self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch.imgs.shape[0])
+        # Check what unlabeled images got pseudo-labels and train on them
+        # with torch.no_grad():
+        #     batch.labels = [h.seq for h in self.approximate_joint_search(batch.imgs, batch.mask)]
+        # np_labels = np.array(batch.labels, dtype=np.object)
+        # valid_unlabeled_samples = torch.BoolTensor([len(x) > 0 for x in batch.labels])
+        #
+        # if valid_unlabeled_samples.any():
+        #     # We do have "valid" pseudo-labels for self-training
+        #     # use them to train as usual
+        #     tgt, out = to_bi_tgt_out(np_labels[valid_unlabeled_samples.detach().numpy().astype(bool)].tolist(), self.device)
+        #     out_hat = self(batch.imgs[valid_unlabeled_samples], batch.mask[valid_unlabeled_samples], tgt)
+        #
+        #     loss = ce_loss(out_hat, out)
+        #     self.log("train_loss", loss, on_step=False, on_epoch=True,
+        #              sync_dist=True, batch_size=valid_unlabeled_samples.count_nonzero())
+        #     self.log("train_loss_unl", loss, on_step=False, on_epoch=True,
+        #              sync_dist=True, batch_size=valid_unlabeled_samples.count_nonzero())
         return loss
 
     def configure_optimizers(self):
@@ -67,7 +67,46 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
         return super().validation_step(batch, batch_idx)
 
     def unlabeled_full(self, data_fetcher: AbstractDataFetcher, batch_progress: BatchProgress, dataloader_idx: int):
-        print("unlabeled_full")
 
-    def validation_unlabeled_step_end(self, output):
-        print(output)
+        start_time = time.time()
+        is_iter_data_fetcher = isinstance(data_fetcher, DataLoaderIterDataFetcher)
+        count = 0
+        batch_indices: List[int] = []
+        pseudo_labels: List[List[List[str]]] = []
+        batch: Batch
+        while not data_fetcher.done:
+            if not is_iter_data_fetcher:
+                batch = next(data_fetcher)
+            else:
+                _, batch = next(data_fetcher)
+            batch_progress.is_last_batch = data_fetcher.done
+            batch_progress.increment_ready()
+            batch_progress.increment_started()
+
+            batch_indices.append(batch.src_idx)
+            labels = []
+            for _ in range(len(batch)):
+                labels.append([f"{self.global_rank}"])
+            pseudo_labels.append(labels)
+            count = count + 1
+
+            batch_progress.increment_processed()
+            batch_progress.increment_completed()
+
+        print(f"pseudo_time[{self.global_rank}]: {time.time() - start_time}")
+        return zip(batch_indices, pseudo_labels)
+
+    def validation_unlabeled_step_end(self, to_gather: Iterable[Tuple[int, List[List[str]]]]):
+        if not hasattr(self.trainer, 'unlabeled_pseudo_labels'):
+            print("warn: trainer does not have the pseudo-label state, cannot update pseudo-labels")
+            return
+
+        all_gpu_labels: List[Union[None, List[Tuple[int, List[List[str]]]]]] = [None for _ in range(dist.get_world_size())]
+        dist.barrier()
+        dist.all_gather_object(all_gpu_labels, list(to_gather))
+        # update the gpu-local trainer-cache
+        for single_gpu_labels in all_gpu_labels:
+            if single_gpu_labels is None:
+                continue
+            for batch_idx, labels in single_gpu_labels:
+                self.trainer.unlabeled_pseudo_labels[batch_idx] = labels
