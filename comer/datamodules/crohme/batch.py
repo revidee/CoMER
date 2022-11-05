@@ -70,11 +70,12 @@ def build_batch_split_from_entries(
         batch_imagesize: int = MAX_SIZE,
         maxlen: int = 200,
         max_imagesize: int = MAX_SIZE,
-        unlabeled_factor: float = 0,
+        unlabeled_factor: float = 0
 ) -> Tuple[List[BatchTuple], List[BatchTuple]]:
     total_len = len(data)
 
     random_idx_order = np.arange(total_len, dtype=int)
+    np.random.seed(torch.initial_seed())
     np.random.shuffle(random_idx_order)
 
     if unlabeled_factor < 0:

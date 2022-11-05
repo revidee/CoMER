@@ -16,6 +16,7 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
 
     def __init__(self) -> None:
         super().__init__()
+        self.dataloader_idx = 0
         self.has_run = False
 
     @property
@@ -48,9 +49,10 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
         void(dl_max_batches)
 
         # configure step_kwargs
-
-        kwargs = self._build_kwargs(kwargs, data_fetcher, self.batch_progress)
         kwargs.setdefault("dataloader_idx", 0)
+        kwargs = self._build_kwargs(kwargs, data_fetcher, self.batch_progress)
+
+        self.dataloader_idx = kwargs.get("dataloader_idx", 0)
 
         # lightning module methods
         output = self._unlabeled_step(**kwargs)
@@ -90,6 +92,16 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
         # strategy_output = self.trainer._call_strategy_hook(hook_name, *args, **kwargs)
         return self.trainer._call_lightning_module_hook(hook_name, *args, **kwargs)
 
+    def start_batch(self, batch: Any, batch_idx: int):
+        self._on_evaluation_batch_start(batch=batch, batch_idx=batch_idx, dataloader_idx=self.dataloader_idx)
+
+    def end_batch(self, batch: Any, batch_idx: int):
+        super()._evaluation_step_end(None)
+        self._on_evaluation_batch_end(None, batch=batch, batch_idx=batch_idx, dataloader_idx=self.dataloader_idx)
+        if not self.trainer.sanity_checking:
+            self.trainer._logger_connector.update_eval_step_metrics(self._dl_batch_idx[self.dataloader_idx])
+            self._dl_batch_idx[self.dataloader_idx] += 1
+
     def _build_kwargs(self, kwargs: OrderedDict, fetcher: AbstractDataFetcher, batch_progress: BatchProgress) -> OrderedDict:
         """Helper method to build the arguments for the current step.
 
@@ -100,8 +112,11 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
         Returns:
             The kwargs passed down to the hooks.
         """
-        kwargs.update(fetcher=fetcher, batch_progress=batch_progress)
+        kwargs.update(fetcher=fetcher, batch_progress=batch_progress,
+                      start_batch=self.start_batch, end_batch=self.end_batch)
         # `dataloader_idx` should be last so we need to push these to the front
+        kwargs.move_to_end("end_batch", last=False)
+        kwargs.move_to_end("start_batch", last=False)
         kwargs.move_to_end("batch_progress", last=False)
         kwargs.move_to_end("fetcher", last=False)
         return kwargs

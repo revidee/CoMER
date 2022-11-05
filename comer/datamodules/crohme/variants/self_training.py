@@ -15,20 +15,20 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
         with ZipFile(self.zipfile_path) as archive:
             if stage == "fit" or stage is None:
                 train_labeled, train_unlabled = build_dataset(archive, "train", self.train_batch_size,
-                                                              unlabeled_factor=1)
+                                                              unlabeled_factor=0.5)
 
                 # "dynamic dataset"
-                self.train_unlabled_ds = train_unlabled[:24]
+                self.train_unlabled_ds = train_unlabled
                 self.trainer.unlabeled_pseudo_labels = [[[] for _ in unl_batch[0]] for unl_batch in self.train_unlabled_ds]
 
                 # "static" datasets
                 self.train_labeled_dataset = CROHMEDataset(
-                    train_labeled[:20],
+                    train_labeled,
                     True,
                     self.scale_aug,
                 )
                 self.val_dataset = CROHMEDataset(
-                    build_dataset(archive, self.test_year, self.eval_batch_size)[0][:4],
+                    build_dataset(archive, self.test_year, self.eval_batch_size)[0],
                     False,
                     self.scale_aug,
                 )
@@ -90,8 +90,8 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
         ), DataLoader(
             CROHMEDataset(
                 self.all_unlabeled_with_potential_pseudos(),
-                True,
-                self.scale_aug,
+                False,
+                False,
             ),
             shuffle=False,
             num_workers=self.num_workers,

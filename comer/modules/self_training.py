@@ -1,12 +1,13 @@
 import time
-from typing import List, Tuple, Iterable, Union
+from typing import List, Tuple, Iterable, Union, Callable
 
+import torch
 from pytorch_lightning.trainer.progress import BatchProgress
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
 from torch import optim
 import torch.distributed as dist
 
-from comer.datamodules.crohme import Batch
+from comer.datamodules.crohme import Batch, vocab
 from comer.modules.supervised import CoMERSupervised
 from comer.lit_extensions import UnlabeledLightningModule
 from comer.utils.utils import (ce_loss,
@@ -66,32 +67,46 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
     def validation_step(self, batch: Batch, batch_idx, dataloader_idx):
         return super().validation_step(batch, batch_idx)
 
-    def unlabeled_full(self, data_fetcher: AbstractDataFetcher, batch_progress: BatchProgress, dataloader_idx: int):
+    def unlabeled_full(self, data_fetcher: AbstractDataFetcher,
+                       batch_progress: BatchProgress,
+                       start_batch: Callable, end_batch: Callable, dataloader_idx: int):
 
         start_time = time.time()
         is_iter_data_fetcher = isinstance(data_fetcher, DataLoaderIterDataFetcher)
-        count = 0
         batch_indices: List[int] = []
         pseudo_labels: List[List[List[str]]] = []
         batch: Batch
-        while not data_fetcher.done:
-            if not is_iter_data_fetcher:
-                batch = next(data_fetcher)
-            else:
-                _, batch = next(data_fetcher)
-            batch_progress.is_last_batch = data_fetcher.done
-            batch_progress.increment_ready()
-            batch_progress.increment_started()
 
-            batch_indices.append(batch.src_idx)
-            labels = []
-            for _ in range(len(batch)):
-                labels.append([f"{self.global_rank}"])
-            pseudo_labels.append(labels)
-            count = count + 1
+        batch_idx = 0
 
-            batch_progress.increment_processed()
-            batch_progress.increment_completed()
+        with torch.no_grad():
+            while not data_fetcher.done:
+                if not is_iter_data_fetcher:
+                    batch = next(data_fetcher)
+                else:
+                    _, batch = next(data_fetcher)
+                start_batch(batch, batch_idx)
+                batch_idx = batch_idx + 1
+                batch_progress.is_last_batch = data_fetcher.done
+                batch_progress.increment_ready()
+                batch_progress.increment_started()
+
+                batch_indices.append(batch.src_idx)
+                # batch_labels: List[List[str]] = []
+                # for i in range(batch.imgs.size(0)):
+                #     batch_labels.append(
+                #         vocab.indices2words(
+                #             self.approximate_joint_search(batch.imgs[i:i + 1], batch.mask[i:i + 1])[0].seq
+                #         )
+                #     )
+                # pseudo_labels.append(batch_labels)
+                pseudo_labels.append(
+                    [vocab.indices2words(h.seq) for h in self.approximate_joint_search(batch.imgs, batch.mask)]
+                )
+
+                batch_progress.increment_processed()
+                batch_progress.increment_completed()
+                end_batch(batch, batch_idx)
 
         print(f"pseudo_time[{self.global_rank}]: {time.time() - start_time}")
         return zip(batch_indices, pseudo_labels)

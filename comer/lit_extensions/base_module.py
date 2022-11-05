@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Callable
 
 from pytorch_lightning.trainer.progress import BatchProgress
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher
@@ -7,7 +8,8 @@ from pytorch_lightning.utilities.fetching import AbstractDataFetcher
 class UnlabeledLightningModule(ABC):
 
     @abstractmethod
-    def unlabeled_full(self, data_fetcher: AbstractDataFetcher, batch_progress: BatchProgress, dataloader_idx: int):
+    def unlabeled_full(self, data_fetcher: AbstractDataFetcher, batch_progress: BatchProgress,
+                       start_batch: Callable, end_batch: Callable, dataloader_idx: int):
         return
 
     @abstractmethod
