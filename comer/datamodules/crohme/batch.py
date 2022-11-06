@@ -40,24 +40,37 @@ BatchTuple = Tuple[List[str], List['np.ndarray'], List[List[str]], bool, int]
 
 
 # Creates a Batch of (potentially) annotated images which pads & masks the images, s.t. they fit into a single tensor.
-def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], labels: List[List[str]], is_labled: bool, src_idx: int) -> Batch:
+def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], labels: List[List[str]], is_labled: bool, src_idx: int, remove_unlabeled: bool = False) -> Batch:
     assert (len(file_names) == len(images) == len(images))
-    labels_as_word_indices = [vocab.words2indices(x) for x in labels]
 
-    heights_x = [s.size(1) for s in images]
-    widths_x = [s.size(2) for s in images]
+    filtered_images: List['np.ndarray'] = []
+    filtered_file_names: List[str] = []
 
-    n_samples = len(images)
-    max_height_x = max(heights_x)
-    max_width_x = max(widths_x)
+    filtered_heights_x = []
+    filtered_widths_x = []
+    filtered_labels_as_indices = []
+
+    for i, label in enumerate(labels):
+        if not remove_unlabeled or len(label) > 0:
+            filtered_im = images[i]
+            filtered_images.append(filtered_im)
+            filtered_labels_as_indices.append(vocab.words2indices(label))
+            filtered_file_names.append((file_names[i]))
+            filtered_heights_x.append(filtered_im.size(1))
+            filtered_widths_x.append(filtered_im.size(2))
+
+
+    n_samples = len(filtered_images)
+    max_height_x = max(filtered_heights_x)
+    max_width_x = max(filtered_widths_x)
 
     x = torch.zeros(n_samples, 1, max_height_x, max_width_x)
     x_mask = torch.ones(n_samples, max_height_x, max_width_x, dtype=torch.bool)
-    for idx, img in enumerate(images):
-        x[idx, :, : heights_x[idx], : widths_x[idx]] = img
-        x_mask[idx, : heights_x[idx], : widths_x[idx]] = 0
+    for idx, img in enumerate(filtered_images):
+        x[idx, :, : filtered_heights_x[idx], : filtered_widths_x[idx]] = img
+        x_mask[idx, : filtered_heights_x[idx], : filtered_widths_x[idx]] = 0
 
-    return Batch(file_names, x, x_mask, labels_as_word_indices, is_labled, src_idx)
+    return Batch(filtered_file_names, x, x_mask, filtered_labels_as_indices, is_labled, src_idx)
 
 
 # change according to your GPU memory
