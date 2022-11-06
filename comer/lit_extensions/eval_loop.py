@@ -13,7 +13,10 @@ class EvaluationWithUnlabeledLoop(EvaluationLoop):
 
     def __init__(self, verbose: bool = True) -> None:
         super().__init__(verbose=verbose)
-        self.unlabeled_loop = EvaluationWithUnlabeledEpochLoop()
+        self.unlabeled_loop = EvaluationWithUnlabeledEpochLoop(self.get_self)
+
+    def get_self(self):
+        return self
 
     def advance(self, *args: Any, **kwargs: Any) -> None:
         """Performs evaluation on one single dataloader."""
@@ -42,6 +45,19 @@ class EvaluationWithUnlabeledLoop(EvaluationLoop):
         if not self.trainer.sanity_checking:
             # indicate the loop has run
             self._has_run = True
+
+    def sync_batches(self):
+        self.epoch_loop._dl_batch_idx.clear()
+        self.epoch_loop._dl_batch_idx.append(self.unlabeled_loop._dl_batch_idx)
+        self.epoch_loop._dl_max_batches = self.unlabeled_loop._dl_max_batches
+        self.epoch_loop.batch_progress.current.ready = self.unlabeled_loop.batch_progress.current.ready
+        self.epoch_loop.batch_progress.current.started = self.unlabeled_loop.batch_progress.current.started
+        self.epoch_loop.batch_progress.current.processed = self.unlabeled_loop.batch_progress.current.processed
+        self.epoch_loop.batch_progress.current.completed = self.unlabeled_loop.batch_progress.current.completed
+        self.epoch_loop.batch_progress.total.ready = self.unlabeled_loop.batch_progress.total.ready
+        self.epoch_loop.batch_progress.total.started = self.unlabeled_loop.batch_progress.total.started
+        self.epoch_loop.batch_progress.total.processed = self.unlabeled_loop.batch_progress.total.processed
+        self.epoch_loop.batch_progress.total.completed = self.unlabeled_loop.batch_progress.total.completed
 
     def _reload_evaluation_dataloaders(self) -> None:
         """Reloads dataloaders if necessary."""

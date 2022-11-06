@@ -8,8 +8,7 @@ from pytorch_lightning.utilities.fetching import AbstractDataFetcher
 class UnlabeledLightningModule(ABC):
 
     @abstractmethod
-    def unlabeled_full(self, data_fetcher: AbstractDataFetcher, batch_progress: BatchProgress,
-                       start_batch: Callable, end_batch: Callable, dataloader_idx: int):
+    def unlabeled_full(self, data_fetcher: AbstractDataFetcher, start_batch: Callable, end_batch: Callable, dataloader_idx: int):
         return
 
     @abstractmethod

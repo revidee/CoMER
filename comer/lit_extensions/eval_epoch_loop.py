@@ -1,10 +1,9 @@
 from collections import OrderedDict
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 from deprecate import void
 from pytorch_lightning.loops import EvaluationEpochLoop
-from pytorch_lightning.trainer.progress import BatchProgress
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher
 from pytorch_lightning.utilities.model_helpers import is_overridden
 from pytorch_lightning.utilities.types import STEP_OUTPUT
@@ -14,10 +13,12 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
     """This is the loop performing the evaluation.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, get_parent: Callable[[], 'EvaluationWithUnlabeledLoop']) -> None:
         super().__init__()
         self.dataloader_idx = 0
         self.has_run = False
+        self.data_fetcher = None
+        self.get_parent = get_parent
 
     @property
     def done(self) -> bool:
@@ -48,21 +49,26 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
         """
         void(dl_max_batches)
 
+        self.data_fetcher = data_fetcher
+
         # configure step_kwargs
         kwargs.setdefault("dataloader_idx", 0)
-        kwargs = self._build_kwargs(kwargs, data_fetcher, self.batch_progress)
+        kwargs = self._build_kwargs(kwargs, None, 0)
 
         self.dataloader_idx = kwargs.get("dataloader_idx", 0)
 
         # lightning module methods
         output = self._unlabeled_step(**kwargs)
-        self._evaluation_step_end(output)
+        hook_name = "validation_unlabeled_step_end"
+        # strategy_output = self.trainer._call_strategy_hook(hook_name, *args, **kwargs)
+        self.trainer._call_lightning_module_hook(hook_name, output)
 
         # if not done by the unlabeled step, set the progress bar to done
         self.batch_progress.total.ready = dl_max_batches
         self.batch_progress.total.completed = dl_max_batches
         self.batch_progress.current.ready = dl_max_batches
         self.batch_progress.current.completed = dl_max_batches
+        self.get_parent().sync_batches()
 
         self.has_run = True
 
@@ -86,23 +92,25 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
 
         return output
 
-    def _evaluation_step_end(self, *args: Any, **kwargs: Any) -> Optional[STEP_OUTPUT]:
-        """Calls the `validation_unlabeled_step_end` hook."""
-        hook_name = "validation_unlabeled_step_end"
-        # strategy_output = self.trainer._call_strategy_hook(hook_name, *args, **kwargs)
-        return self.trainer._call_lightning_module_hook(hook_name, *args, **kwargs)
-
     def start_batch(self, batch: Any, batch_idx: int):
+        self.batch_progress.is_last_batch = self.data_fetcher.done
+        self.batch_progress.increment_ready()
         self._on_evaluation_batch_start(batch=batch, batch_idx=batch_idx, dataloader_idx=self.dataloader_idx)
+        self.batch_progress.increment_started()
+        self.get_parent().sync_batches()
 
     def end_batch(self, batch: Any, batch_idx: int):
-        super()._evaluation_step_end(None)
+        self._evaluation_step_end(None)
+        self.batch_progress.increment_processed()
         self._on_evaluation_batch_end(None, batch=batch, batch_idx=batch_idx, dataloader_idx=self.dataloader_idx)
+        self.batch_progress.increment_completed()
+
         if not self.trainer.sanity_checking:
             self.trainer._logger_connector.update_eval_step_metrics(self._dl_batch_idx[self.dataloader_idx])
             self._dl_batch_idx[self.dataloader_idx] += 1
+        self.get_parent().sync_batches()
 
-    def _build_kwargs(self, kwargs: OrderedDict, fetcher: AbstractDataFetcher, batch_progress: BatchProgress) -> OrderedDict:
+    def _build_kwargs(self, kwargs: OrderedDict, batch: Any, batch_idx: int) -> OrderedDict:
         """Helper method to build the arguments for the current step.
 
         Args:
@@ -112,12 +120,10 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
         Returns:
             The kwargs passed down to the hooks.
         """
-        kwargs.update(fetcher=fetcher, batch_progress=batch_progress,
-                      start_batch=self.start_batch, end_batch=self.end_batch)
+        kwargs.update(fetcher=self.data_fetcher, start_batch=self.start_batch, end_batch=self.end_batch)
         # `dataloader_idx` should be last so we need to push these to the front
         kwargs.move_to_end("end_batch", last=False)
         kwargs.move_to_end("start_batch", last=False)
-        kwargs.move_to_end("batch_progress", last=False)
         kwargs.move_to_end("fetcher", last=False)
         return kwargs
 

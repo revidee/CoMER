@@ -68,7 +68,6 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
         return super().validation_step(batch, batch_idx)
 
     def unlabeled_full(self, data_fetcher: AbstractDataFetcher,
-                       batch_progress: BatchProgress,
                        start_batch: Callable, end_batch: Callable, dataloader_idx: int):
 
         start_time = time.time()
@@ -87,9 +86,6 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
                     _, batch = next(data_fetcher)
                 start_batch(batch, batch_idx)
                 batch_idx = batch_idx + 1
-                batch_progress.is_last_batch = data_fetcher.done
-                batch_progress.increment_ready()
-                batch_progress.increment_started()
 
                 batch_indices.append(batch.src_idx)
                 # batch_labels: List[List[str]] = []
@@ -104,8 +100,6 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
                     [vocab.indices2words(h.seq) for h in self.approximate_joint_search(batch.imgs, batch.mask)]
                 )
 
-                batch_progress.increment_processed()
-                batch_progress.increment_completed()
                 end_batch(batch, batch_idx)
 
         print(f"pseudo_time[{self.global_rank}]: {time.time() - start_time}")
