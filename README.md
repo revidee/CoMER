@@ -99,7 +99,15 @@ perl --version  # make sure you have installed perl 5
 unzip -q data.zip
 
 # evaluation
-# evaluate model in lightning_logs/version_0 on all CROHME test sets
-# results will be printed in the screen and saved to lightning_logs/version_0 folder
-bash eval_all.sh 0
+
+# evaluate given model on all CROHME test sets
+# results will be printed and put into ./eval_out
+bash eval_all.sh -cp my_trained_model.ckpt
+
+# All CLI Options:
+#   -cp,--cp-path <file-path: string> - Path to the checkpoint
+#   -o,--out-dir <dir-path: string> (optional, def: ./eval_out) - Directory in which all results will be copied to
+#   -d,--data-dir: <dir-path: string> (optional, def: ./data) - Data directory of the unzipped data.zip
+#   -gpu,--gpu: <idx: int> (optional, def: 0) - index of the cuda device to use
+#   -p,--pandoc: <file-path: string> (optional, def: pandoc) - path to the pandoc executable, if it needs to be overwritten
 ```

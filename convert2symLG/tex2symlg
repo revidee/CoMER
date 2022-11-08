@@ -14,6 +14,12 @@ fi
 
 OUTDIR=$2
 
+if [[ -z "${PANDOC_EXEC}" ]]; then
+  PANDOC_PATH="pandoc"
+else
+  PANDOC_PATH="${PANDOC_EXEC}"
+fi
+
 if ! [ -d $OUTDIR ]
 then
         mkdir $OUTDIR
@@ -33,7 +39,7 @@ do
 		txtDir=$file
 		mmlDir="$mDir/$BNAME.mml"
 
-        	pandoc --mathml -s $txtDir -o $mmlDir
+        	"$PANDOC_PATH" --mathml -s $txtDir -o $mmlDir
       	fi
 	
 done

@@ -1,31 +1,105 @@
 #!/bin/bash
-# usage: CUDA_VISIBLE_DEVICES=4 ./scripts/test/eval.sh $version: str $test_year: str $error_tol: int
+# USAGE: ./scripts/test/eval.sh
+#   -cp,--cp-path <file-path: string> - Path to the checkpoint
+#   -y,--year <2014/2016/2019>
+#   [-o,--out-dir <dir-path: string>] (optional, def: ./eval_out) - Directory in which all results will be copied to
+#   [-d,--data-dir: <dir-path: string>] (optional, def: ./data) - Data directory of the unzipped data.zip
+#   [-gpu,--gpu: <idx: int>] (optional, def: 0) - index of the cuda device to use
 
 
-version=$1
-test_year=$2
-error_tol=$3
-dir=lightning_logs/version_$version/
+
+
+
+POSITIONAL_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -cp|--cp-path)
+      chk_point_path="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -y|--year)
+      test_year="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -o|--out-dir)
+      out_dir=$(echo $2 | sed 's:/*$::')
+      shift # past argument
+      shift # past value
+      ;;
+    -d|--data-dir)
+      data_dir="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -gpu|--gpu)
+      gpu="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -*|--*)
+      echo "Unknown option $1"
+      exit 1
+      ;;
+    *)
+      POSITIONAL_ARGS+=("$1") # save positional arg
+      shift # past argument
+      ;;
+  esac
+done
+
+set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
+
+if [ -z "$chk_point_path" ]; then
+  echo "fatal: checkpoint path not given";
+  exit 1
+fi
+
+if [ -z "$test_year" ]; then
+  echo "fatal: year not given";
+  exit 1
+fi
+
+if [ -z "$out_dir" ]; then
+  out_dir='./eval_out'
+fi
+
+if [ -z "$data_dir" ]; then
+  data_dir='./data'
+fi
+
+if [ -z "$gpu" ]; then
+  gpu='0'
+fi
+
+if ! [[ $gpu =~ $single_num_regex ]] ; then
+   echo "fatal: given gpu index is not a single number (expected a device id, eg for cuda:0, \"0\")." >&2;
+   echo "given: ${gpu}"
+   exit 1
+fi
+
 
 # clean out
-rm -rf test_temp/
+rm -rf $out_dir/test_temp/
 rm -rf Results_pred_symlg/
 
 # generate predictions
-python scripts/test/test.py $version $test_year
+python -m scripts.test.test $chk_point_path --year $test_year --gpu $gpu
 
-# copy predictions to target folder
-cp result.zip $dir/$test_year.zip
-
-# dump predictions to temp
-mkdir -p test_temp/result
-unzip -q result.zip -d test_temp/result
+mkdir -p $out_dir/test_temp/
+mv result.zip $out_dir/$test_year.zip
+unzip -q $out_dir/$test_year.zip -d $out_dir/test_temp/result
 
 # convert tex to symlg
-tex2symlg test_temp/result test_temp/pred_symlg
+tex2symlg $out_dir/test_temp/result $out_dir/test_temp/pred_symlg
 
 # evaluate two symlg folder
-evaluate test_temp/pred_symlg data/$test_year/symLg >/dev/null 2>&1
+evaluate $out_dir/test_temp/pred_symlg $data_dir/$test_year/symLg >/dev/null 2>&1
+
+# copy results
+cp ./Results_pred_symlg/Summary.txt $out_dir/"$test_year"_Summary.txt
 
 # extract evaluation result and save to target folder
-python scripts/test/extract_exprate.py $error_tol >&1 | tee $dir/$test_year.txt
+python -m scripts.test.extract_exprate 4 >&1 | tee $out_dir/$test_year.txt

@@ -20,7 +20,7 @@ def collate_fn(batch: List[BatchTuple]) -> Batch:
 class CROHMESupvervisedDatamodule(pl.LightningDataModule):
     def __init__(
             self,
-            zipfile_path: str = f"{os.path.dirname(os.path.realpath(__file__))}/../../data.zip",
+            zipfile_path: str = f"{os.path.dirname(os.path.realpath(__file__))}/../../../../data.zip",
             test_year: str = "2014",
             train_batch_size: int = 8,
             eval_batch_size: int = 4,

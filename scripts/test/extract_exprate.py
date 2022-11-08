@@ -1,9 +1,9 @@
-import typer
+from jsonargparse import CLI
 
 fpath = "Results_pred_symlg/Summary.txt"
 
 
-def main(error_tol: int):
+def main(err: int):
     struct_ln = None
     exprate_ln = None
     with open(fpath, "r") as f:
@@ -14,7 +14,7 @@ def main(error_tol: int):
                 exprate_ln = ln
 
     struct_rate = float(struct_ln.split()[1])
-    correct_num = [int(x) for x in exprate_ln.split()[2 : 2 + error_tol]]
+    correct_num = [int(x) for x in exprate_ln.split()[2 : 2 + err]]
     total_num = int(exprate_ln.split()[-1])
 
     print(f"Struct Rate: {struct_rate}")
@@ -23,4 +23,4 @@ def main(error_tol: int):
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    CLI(main)

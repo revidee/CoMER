@@ -1,6 +1,8 @@
 import os
 
-import typer
+import torch
+from jsonargparse import CLI
+
 from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.modules import CoMERSupervised
 from pytorch_lightning import Trainer, seed_everything
@@ -8,22 +10,22 @@ from pytorch_lightning import Trainer, seed_everything
 seed_everything(7)
 
 
-def main(version: str, test_year: str):
+def main(
+    cp: str,
+    year: str = '2014',
+    gpu: int = 0,
+):
     # generate output latex in result.zip
-    ckp_folder = os.path.join("lightning_logs", f"version_{version}", "checkpoints")
-    fnames = os.listdir(ckp_folder)
-    assert len(fnames) == 1
-    ckp_path = os.path.join(ckp_folder, fnames[0])
-    print(f"Test with fname: {fnames[0]}")
+    trainer = Trainer(logger=False, accelerator='gpu', devices=[gpu])
 
-    trainer = Trainer(logger=False, gpus=1)
+    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=4)
 
-    dm = CROHMESupvervisedDatamodule(test_year=test_year, eval_batch_size=4)
+    device = torch.device(f'cuda:{gpu}')
 
-    model = CoMERSupervised.load_from_checkpoint(ckp_path)
+    model = CoMERSupervised.load_from_checkpoint(cp).to(device).eval()
 
     trainer.test(model, datamodule=dm)
 
 
-if __name__ == "__main__":
-    typer.run(main)
+if __name__ == '__main__':
+    CLI(main)
