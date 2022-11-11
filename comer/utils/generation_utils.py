@@ -413,6 +413,7 @@ class DecodeModel(pl.LightningModule):
                 is_l2r=True,
                 device=self.device,
                 max_len=max_len,
+                min_normalized_pseudo_probabilty=0.05
             ) for src_idx in range(batch_size)
         ]
 
@@ -424,6 +425,7 @@ class DecodeModel(pl.LightningModule):
                     is_l2r=False,
                     device=self.device,
                     max_len=max_len,
+                    min_normalized_pseudo_probabilty=0.05
                 ) for src_idx in range(batch_size)
             ]
 

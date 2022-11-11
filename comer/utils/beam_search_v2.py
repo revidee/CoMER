@@ -16,10 +16,10 @@ class BeamManager:
                  is_l2r: bool,
                  device: torch.device,
                  max_len: int,
-                 max_candidates_per_node: int = 3,
-                 absolute_pruning_threshold: float = 2.5,
-                 relative_pruning_threshold: float = 0.6,
-                 relative_local_pruning_threshold: float = 0.02,
+                 max_candidates_per_node: int = 4,
+                 absolute_pruning_threshold: float = 3,
+                 relative_pruning_threshold: float = 0.4,
+                 relative_local_pruning_threshold: float = 0.01,
                  length_penalty: float = 1.0,
                  min_normalized_pseudo_probabilty: float = invalid_score
                  ):
@@ -111,6 +111,10 @@ class BeamManager:
         rel_thresh = max_cand_score * self.rp_t
         rel_local_thresh = max_cand_wscore * self.rpl_t
         abs_thresh = max_cand_score - self.ap_t
+
+        rel_thresh = invalid_score if rel_thresh == 0 else rel_thresh
+        rel_local_thresh = invalid_score if rel_local_thresh == 0 else rel_local_thresh
+        abs_thresh = invalid_score if abs_thresh == 0 else abs_thresh
 
         pass_mask = (
                 # Only candidates with a larger normalized score are considered (Global Pruning)
