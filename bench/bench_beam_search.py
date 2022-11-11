@@ -6,16 +6,18 @@ import numpy as np
 import torch
 from jsonargparse import CLI
 
-from comer.datamodules.crohme import extract_data_entries, DataEntry
+from comer.datamodules.crohme import extract_data_entries, DataEntry, vocab
 from comer.datamodules.crohme.batch import build_batches_from_samples, BatchTuple, Batch
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.modules import CoMERSupervised
 
-checkpoint_path = "./bench/epoch3.ckpt"
+# checkpoint_path = "./bench/epoch3.ckpt"
+checkpoint_path = "./bench/baseline_t112.ckpt"
 
+use_new = False
 
 def main(batch_size: int = 2, seeds: List[int] = None, gpu: int = 1,
-         benches: Optional[List[str]] = None):
+         benches: Optional[List[str]] = None, new: bool = False):
     if benches is None:
         benches = ["biggest", "smallest", "random"]
     if seeds is None:
@@ -24,6 +26,8 @@ def main(batch_size: int = 2, seeds: List[int] = None, gpu: int = 1,
     print("- seed: ", seeds)
     print("- batch_size: ", batch_size)
     print(f"- gpu: cuda:{gpu}")
+    global use_new
+    use_new = new
     device = torch.device(f"cuda:{gpu}")
 
     with torch.no_grad():
@@ -115,25 +119,23 @@ def one_by_one_unpadded(batch: Batch, model, shapes):
         shape = shapes[i]
         model.approximate_joint_search(
             batch.imgs[i:i + 1, :, :shape[1], :shape[2]],
-            batch.mask[i:i + 1, :shape[1], :shape[2]]
+            batch.mask[i:i + 1, :shape[1], :shape[2]],
+            use_new=use_new
         )
 
 def two_by_two_padded(batch: Batch, model, shapes):
     for i in range(batch.imgs.size(0) // 2):
-        model.approximate_joint_search(batch.imgs[(2 * i):(2 * (i + 1))], batch.mask[(2 * i):(2 * (i + 1))])
+        model.approximate_joint_search(batch.imgs[(2 * i):(2 * (i + 1))], batch.mask[(2 * i):(2 * (i + 1))],
+                                       use_new=use_new)
 
 
 def one_by_one_padded(batch: Batch, model, shapes):
     for i in range(batch.imgs.size(0)):
-        model.approximate_joint_search(batch.imgs[i:i + 1], batch.mask[i:i + 1])
-
-
-def single_parallel_fn(model, imgs, mask):
-    model.approximate_joint_search(imgs, mask)
+        model.approximate_joint_search(batch.imgs[i:i + 1], batch.mask[i:i + 1], use_new=use_new)
 
 
 def full(batch: Batch, model, shapes):
-    model.approximate_joint_search(batch.imgs, batch.mask)
+    model.approximate_joint_search(batch.imgs, batch.mask, use_new=use_new)
 
 
 def fancy_print(name: str, time: float, ref: float):

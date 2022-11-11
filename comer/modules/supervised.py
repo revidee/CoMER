@@ -127,11 +127,11 @@ class CoMERSupervised(pl.LightningModule):
                         f.write(content)
 
     def approximate_joint_search(
-        self, img: FloatTensor, mask: LongTensor, use_new: bool = False
+        self, img: FloatTensor, mask: LongTensor, use_new: bool = True
     ) -> List[Hypothesis]:
         if use_new:
-            return self.comer_model.new_beam_search(img, mask, **self.hparams, scoring_run=False, bi_dir=False)
-        return self.comer_model.beam_search(img, mask, **self.hparams)
+            return self.comer_model.new_beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True)
+        return self.comer_model.beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True)
 
     def configure_optimizers(self):
         optimizer = optim.SGD(

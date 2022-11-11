@@ -30,6 +30,8 @@ def extract_data_entries(archive: ZipFile, dir_name: str,
     """
     with archive.open(f"data/{dir_name}/caption.txt", "r") as f:
         captions = f.readlines()
+    if max_size is not None:
+        captions = captions[0:max_size]
     data: List[DataEntry] = []
     for line in captions:
         tmp: List[str] = line.decode().strip().split()

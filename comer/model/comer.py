@@ -68,15 +68,17 @@ class CoMER(pl.LightningModule):
         return out
 
     def beam_search(
-        self,
-        img: FloatTensor,
-        img_mask: LongTensor,
-        beam_size: int,
-        max_len: int,
-        alpha: float,
-        early_stopping: bool,
-        temperature: float,
-        **kwargs,
+            self,
+            img: FloatTensor,
+            img_mask: LongTensor,
+            beam_size: int,
+            max_len: int,
+            alpha: float,
+            early_stopping: bool,
+            temperature: float,
+            bi_dir: bool = True,
+            scoring_run: bool = True,
+            **kwargs,
     ) -> List[Hypothesis]:
         """run bi-direction beam search for given img
 
@@ -95,7 +97,8 @@ class CoMER(pl.LightningModule):
         """
         feature, mask = self.encoder(img, img_mask)  # [b, t, d]
         return self.decoder.beam_search(
-            [feature], [mask], beam_size, max_len, alpha, early_stopping, temperature
+            [feature], [mask], beam_size, max_len, alpha, early_stopping, temperature,
+            bi_dir=bi_dir, scoring_run=scoring_run
         )
 
     def new_beam_search(
@@ -128,6 +131,6 @@ class CoMER(pl.LightningModule):
         """
         feature, mask = self.encoder(img, img_mask)  # [b, t, d]
         return self.decoder.new_beam_search(
-            [feature], [mask], beam_size, max_len, alpha, early_stopping,
+            feature, mask, beam_size, max_len, alpha, early_stopping,
             temperature, bi_dir=bi_dir, scoring_run=scoring_run
         )
