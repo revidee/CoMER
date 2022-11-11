@@ -68,12 +68,12 @@ if ! [[ $gpu =~ $single_num_regex ]] ; then
    exit 1
 fi
 
-# set PANDOC_PATH env variable, which is being used by tex2mml / tex2symlg.
+# set PANDOC_EXEC env variable, which is being used by tex2mml / tex2symlg.
 # Used, when pandoc is not installed globally
 if [ -z "$pandoc_path" ]; then
-  export PANDOC_PATH='pandoc'
+  export PANDOC_EXEC='pandoc'
 else
-  export PANDOC_PATH="$pandoc_path"
+  export PANDOC_EXEC="$pandoc_path"
 fi
 
 
