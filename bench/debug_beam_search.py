@@ -11,8 +11,8 @@ from comer.datamodules.crohme.batch import build_batches_from_samples, BatchTupl
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.modules import CoMERSupervised
 
-checkpoint_path = "./bench/epoch3.ckpt"
-# checkpoint_path = "./bench/baseline_t112.ckpt"
+# checkpoint_path = "./bench/epoch3.ckpt"
+checkpoint_path = "./bench/baseline_t112.ckpt"
 
 
 def main(gpu: int = 1):
@@ -33,22 +33,28 @@ def main(gpu: int = 1):
 
         with ZipFile("data.zip") as archive:
 
-            batch_tuple: BatchTuple = build_batches_from_samples(
-                extract_data_entries(archive, "train", to_device=device),
+            batch_tuple: List[BatchTuple] = build_batches_from_samples(
+                extract_data_entries(archive, "2014", to_device=device),
                 1,
                 batch_imagesize=(2200 * 250 * 4),
                 max_imagesize=(2200 * 250),
                 is_labled=True,
                 include_last_only_full=True
-            )[-6]
+            )
 
-            shapes = [s.size() for s in batch_tuple[1]]
-            batch: Batch = collate_fn([batch_tuple]).to(device)
-
-            # torch.cuda.empty_cache()
+            for idx, batch_tup in enumerate(batch_tuple):
+                batch: Batch = collate_fn([batch_tup]).to(device)
+                hyps = model.approximate_joint_search(batch.imgs, batch.mask, use_new=False)
+                hyps_new = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True)
+                for i, hyp_old in enumerate(hyps):
+                    if hyp_old.seq != hyps_new[i].seq:
+                        print("mismatch", batch.img_bases[0], idx)
+                        print("old: ", vocab.indices2words(hyp_old.seq))
+                        print("new: ", vocab.indices2words(hyps_new[i].seq))
+                        exit(1)
 
             print(batch.img_bases)
-            full(batch, model, shapes, use_new=False)
+
             # n = 2
             # print(f"benching normal {n} times")
             # start_time = time.time()
@@ -63,8 +69,8 @@ def main(gpu: int = 1):
             # print("total time: ", time.time() - start_time)
 
 def full(batch: Batch, model, shapes, use_new: bool = False):
-    hyps = model.approximate_joint_search(batch.imgs, batch.mask, use_new=use_new)
-    print(hyps[0].score, len(hyps[0].seq), vocab.indices2words(hyps[0].seq))
+    return model.approximate_joint_search(batch.imgs, batch.mask, use_new=use_new)
+    # print(hyps[0].score, len(hyps[0].seq), vocab.indices2words(hyps[0].seq))
 
 if __name__ == '__main__':
     CLI(main)

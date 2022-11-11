@@ -16,10 +16,10 @@ class BeamManager:
                  is_l2r: bool,
                  device: torch.device,
                  max_len: int,
-                 max_candidates_per_node: int = 4,
-                 absolute_pruning_threshold: float = 3,
-                 relative_pruning_threshold: float = 0.4,
-                 relative_local_pruning_threshold: float = 0.01,
+                 max_candidates_per_node: int = 20,
+                 absolute_pruning_threshold: float = 5,
+                 relative_pruning_threshold: float = 5,
+                 # relative_local_pruning_threshold: float = 5,
                  length_penalty: float = 1.0,
                  min_normalized_pseudo_probabilty: float = invalid_score
                  ):
@@ -39,9 +39,9 @@ class BeamManager:
         if min_normalized_pseudo_probabilty is not invalid_score:
             self.min_normalized_hyp_score = math.log(min_normalized_pseudo_probabilty)
         # Relative Threshold for Pruning
-        self.rp_t = (2 - relative_pruning_threshold)
+        self.rp_t = relative_pruning_threshold
         # Relative-Local Threshold for Pruning
-        self.rpl_t = (2 - relative_local_pruning_threshold)
+        # self.rpl_t = relative_local_pruning_threshold
         # (2 - thresh) is needed since the score is a summed-log-prob and therefore negative.
         # But, if we want a condition, e.g.:
         #       score(candidate) > max_c{ score(c) } * rp (0.6=60%)
@@ -92,9 +92,12 @@ class BeamManager:
 
         # compute the single best next token, i.e. max(score_word(candidate)) over all candidates
         #   This is used for "Relative Local Threshold Pruning"
-        flattened_word_log_probs = word_log_probs.view(-1)
-        max_cand_wscore_idx = torch.argmax(flattened_word_log_probs)
-        max_cand_wscore = flattened_word_log_probs[max_cand_wscore_idx]
+        # print(f"update {self}")
+        # print(word_log_probs)
+        # print(vocab.indices2words(vocab_indices[0].tolist()))
+        # flattened_word_log_probs = word_log_probs.view(-1)
+        # max_cand_wscore_idx = torch.argmax(flattened_word_log_probs)
+        # max_cand_wscore = flattened_word_log_probs[max_cand_wscore_idx]
 
         # compute the single best active candidate, i.e. max(score(candidate)) over all candidates
         #   This is used for both "Absolute" & "Relative Threshold Pruning"
@@ -106,34 +109,38 @@ class BeamManager:
         # compute the normalized score, s.t. scores of different lengths are comparable
         curr_normalizing_fac = (self.curr_len ** self.length_penalty)
         normalized_log_probs = summed_log_probs / curr_normalizing_fac
+        # print(normalized_log_probs)
 
         # Create a mask which excludes all pruned candidates
         rel_thresh = max_cand_score * self.rp_t
-        rel_local_thresh = max_cand_wscore * self.rpl_t
+        # rel_local_thresh = max_cand_wscore * self.rpl_t
         abs_thresh = max_cand_score - self.ap_t
 
         rel_thresh = invalid_score if rel_thresh == 0 else rel_thresh
-        rel_local_thresh = invalid_score if rel_local_thresh == 0 else rel_local_thresh
+        # rel_local_thresh = invalid_score if rel_local_thresh == 0 else rel_local_thresh
         abs_thresh = invalid_score if abs_thresh == 0 else abs_thresh
 
         pass_mask = (
                 # Only candidates with a larger normalized score are considered (Global Pruning)
                 (normalized_log_probs >= self.min_normalized_hyp_score)
                 # A full-score must be in X% range of the single best score
-                & (summed_log_probs >= rel_thresh)
+                # & (summed_log_probs >= rel_thresh)
                 # A full-score must be in range-X of the single best score (i.e. closer than 2.5 in log-prob space)
                 & (summed_log_probs >= abs_thresh)
                 # A word-score must be in X% range of the single best word
-                & (word_log_probs >= rel_local_thresh)
+                # & (word_log_probs >= rel_local_thresh)
         )
         # Do the actual masking, now valid_summed_log_probs either contains a summed score, or -inf
         valid_summed_log_probs = torch.where(pass_mask, summed_log_probs, invalid_score)
-
+        # print("valids")
+        # print(valid_summed_log_probs)
         # Without Maximum Candidates, we could simply now choose the best k next candidates as active beams
         # and continue.
         # But in order to limit the max. next beams per current active beam, we need to first
         # calculate the top-(max-candidates) for each active beam
-        max_candidates = min(self.max_beams, valid_summed_log_probs.size(1)) if self.curr_len == 1 else self.mc
+        max_candidates = (
+            min(self.max_beams, valid_summed_log_probs.size(1)) if self.curr_len == 1 else min(self.max_beams, self.mc)
+        )
         top_mc_per_beam, top_mc_per_beam_indices = torch.topk(valid_summed_log_probs,
                                                               max_candidates,
                                                               sorted=False)
@@ -146,6 +153,8 @@ class BeamManager:
                                                             min(top_mc_per_beam_flattened.size(0), self.max_beams))
         next_active_beams = []
         next_active_beams_summed_logits = []
+        # print("top cand scores:")
+        # print(top_cand_scores)
         for i, val in enumerate(top_cand_scores):
             # If we encounter an -inf in the _sorted_ candidates,
             # we can safely abort since we then reached the invalidated ones.
@@ -162,14 +171,17 @@ class BeamManager:
             ))
 
             if next_token == self.end_token:
+                # print("fin", vocab.indices2words(next_sequence.tolist()), self.active_beams_summed_logits[originating_beam_idx] / curr_normalizing_fac)
                 # if the beam has ended, cache it as best or drop it immediately
-                self.finish_single(normalized_log_probs[originating_beam_idx][originating_beam_topk_idx], next_sequence)
+                self.finish_single(self.active_beams_summed_logits[originating_beam_idx] / curr_normalizing_fac, next_sequence)
             else:
+                # print("add beam", vocab.indices2words(next_sequence.tolist()), summed_log_probs[originating_beam_idx][originating_beam_topk_idx])
                 # Add sequence with it's summed log-probability to the next active beams
                 next_active_beams.append(next_sequence.unsqueeze(0))
                 next_active_beams_summed_logits.append(
                     (summed_log_probs[originating_beam_idx][originating_beam_topk_idx]).unsqueeze(-1)
                 )
+        # print("---")
         if len(next_active_beams) == 0 or self.curr_len == self.max_len:
             self.done = True
             self.active_beams = torch.empty((0,), device=self.device)

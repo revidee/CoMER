@@ -11,8 +11,8 @@ from comer.datamodules.crohme.batch import build_batches_from_samples, BatchTupl
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.modules import CoMERSupervised
 
-# checkpoint_path = "./bench/epoch3.ckpt"
-checkpoint_path = "./bench/baseline_t112.ckpt"
+checkpoint_path = "./bench/epoch3.ckpt"
+# checkpoint_path = "./bench/baseline_t112.ckpt"
 
 use_new = False
 
