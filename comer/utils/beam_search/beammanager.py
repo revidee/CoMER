@@ -1,12 +1,11 @@
 import math
-from typing import Tuple, Union
+from typing import Union, Tuple
 
 import torch
+from torch import Tensor, FloatTensor, LongTensor
+
 from comer.datamodules.crohme import vocab
-from torch import FloatTensor, LongTensor, Tensor
-
-
-invalid_score = float('-Inf')
+from comer.utils.beam_search import invalid_score
 
 
 class BeamManager:
@@ -21,7 +20,7 @@ class BeamManager:
                  relative_pruning_threshold: float = 5,
                  # relative_local_pruning_threshold: float = 5,
                  length_penalty: float = 1.0,
-                 min_normalized_pseudo_probabilty: float = invalid_score
+                 global_min_norm_threshold: float = invalid_score
                  ):
         # static / rather static variables, calculated/set once for easy access
         self.max_beams = max_beams
@@ -35,9 +34,7 @@ class BeamManager:
         self.mc = max_candidates_per_node
         # Absolute Threshold for Pruning
         self.ap_t = absolute_pruning_threshold
-        self.min_normalized_hyp_score = min_normalized_pseudo_probabilty
-        if min_normalized_pseudo_probabilty is not invalid_score:
-            self.min_normalized_hyp_score = math.log(min_normalized_pseudo_probabilty)
+        self.min_normalized_hyp_score = global_min_norm_threshold
         # Relative Threshold for Pruning
         self.rp_t = relative_pruning_threshold
         # Relative-Local Threshold for Pruning
@@ -61,7 +58,7 @@ class BeamManager:
 
         # state variables
         self.curr_len = 1
-        self.current_beam_amount_changed = False
+        self.beam_amount_changed_last_update = True
 
         self.active_beams = torch.full(
             (1, 1),
@@ -69,6 +66,7 @@ class BeamManager:
             dtype=torch.long,
             device=self.device,
         )
+        self.active_beams_len = 1
         self.active_beams_summed_logits = torch.zeros(1, dtype=torch.long, device=self.device)
 
         # List of finished hypothesis as tuple (score, sequence)
@@ -182,12 +180,14 @@ class BeamManager:
                     (summed_log_probs[originating_beam_idx][originating_beam_topk_idx]).unsqueeze(-1)
                 )
         # print("---")
-        if len(next_active_beams) == 0 or self.curr_len == self.max_len:
+        next_active_beams_len = len(next_active_beams)
+        self.beam_amount_changed_last_update = self.active_beams_len != next_active_beams_len
+        self.active_beams_len = next_active_beams_len
+        if next_active_beams_len == 0 or self.curr_len == self.max_len:
             self.done = True
             self.active_beams = torch.empty((0,), device=self.device)
             self.active_beams_summed_logits = torch.empty((0,), device=self.device)
             return
-
         self.active_beams = torch.cat(next_active_beams)
         self.active_beams_summed_logits = torch.cat(next_active_beams_summed_logits)
 
@@ -210,4 +210,3 @@ class BeamManager:
             return self.best_hyp[0], self.best_hyp[1][1:-1]
 
         return self.best_hyp[0], torch.flip(self.best_hyp[1], dims=[0])[1:-1]
-

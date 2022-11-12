@@ -1,18 +1,17 @@
 from abc import abstractmethod
-import itertools as iter
-from typing import List, Tuple, Union
+from typing import List, Tuple
 
 import pytorch_lightning as pl
 import torch
 import torch.nn.functional as F
-from comer.datamodules.crohme import vocab, vocab_size
-from comer.utils.utils import Hypothesis, ce_loss, to_tgt_output
 from einops import rearrange
 from einops.einops import repeat
-from torch import FloatTensor, LongTensor, Tensor
+from torch import FloatTensor, LongTensor
 
-from .beam_search import BeamSearchScorer
-from .beam_search_v2 import BeamManager
+from comer.datamodules.crohme import vocab, vocab_size
+from comer.utils.beam_search import BatchedBeamSearch
+from comer.utils.original_beam_search import BeamSearchScorer
+from comer.utils.utils import Hypothesis, ce_loss, to_tgt_output
 
 
 # modified from
@@ -397,74 +396,16 @@ class DecodeModel(pl.LightningModule):
         -------
         List[Hypothesis]: [batch_size,]
         """
-        # If we want to run bi-directional beam_search, we generate double the hypothesis.
-        # We aim to generate k-best Hyps for each - L2R and R2L - decoding.
-        # Thus, we have to double the batch, s.t. we start with
-        # (batch * 2 * beam_size) Beams which we explore to generate (batch * 2 * beam_size) Hyps
+        beamsearch = BatchedBeamSearch(
+            beam_size,
+            self.device,
+            max_len,
+            bi_dir,
+            temperature=temperature
+        )
+        hyps, scores = beamsearch.predict(self, src, src_mask)
+
         batch_size = src.shape[0]
-
-        # instantiate new beam managers.
-        # Each Beam Manager analyzes the results from a single prediction step
-        # and updates its state: creating new beams, pruning beams, being done, ...
-        beam_managers = [
-            BeamManager(
-                max_beams=beam_size,
-                src_idx=src_idx,
-                is_l2r=True,
-                device=self.device,
-                max_len=max_len,
-                min_normalized_pseudo_probabilty=0.05
-            ) for src_idx in range(batch_size)
-        ]
-
-        if bi_dir:
-            beam_managers = beam_managers + [
-                BeamManager(
-                    max_beams=beam_size,
-                    src_idx=src_idx,
-                    is_l2r=False,
-                    device=self.device,
-                    max_len=max_len,
-                    min_normalized_pseudo_probabilty=0.05
-                ) for src_idx in range(batch_size)
-            ]
-
-        while True:
-            next_src, next_src_mask, next_input_ids, bm_refs = generate_next_inputs(
-                src, src_mask, beam_managers, device=self.device
-            )
-            if len(bm_refs) == 0:
-                break
-
-            topk_for_active_beams_scores, topk_for_active_beams_indices = torch.topk(
-                # Get the top-k best entries for each active beam
-                # k is limited by the beam_size, since we cannot have more beams in the following step
-                #           TODO: Limit by maximum-candidates from variable-batch (+1 for EOS/SOS elimination),
-                #            each beam can have at most mc following beams, except in the first iteration!
-                F.log_softmax(
-                    #   -> log-probabilities for all vocab-entries for each currently active beam
-                    #   -> e.g. current active beams [[SOS, "1"]] (1 active beam)
-                    #           result of F.log_softmax would then be of size [1, vocab-len]
-                    #           to describe the log-likelihood of each "letter"
-                    self(next_src, next_src_mask, next_input_ids)[:, -1, :] / temperature,
-                    dim=-1
-                ),
-                k=beam_size
-            )
-            current_beam_idx = 0
-            for (bm_ref, amount_active_beams) in bm_refs:
-                next_beam_idx = current_beam_idx + amount_active_beams
-                beam_managers[bm_ref].update(topk_for_active_beams_scores[current_beam_idx:next_beam_idx, :],
-                                             topk_for_active_beams_indices[current_beam_idx:next_beam_idx, :])
-                current_beam_idx = next_beam_idx
-        hyps: List[LongTensor] = []
-        scores: Union[Tensor | List[Tensor]] = []
-        for bm in beam_managers:
-            score, hyp = bm.get_best_l2r_finalized()
-            scores.append(score.unsqueeze(0))
-            hyps.append(hyp)
-        scores = torch.cat(scores)
-
         if scoring_run and bi_dir:
             # compute the final score, by using the reversed sequence as target/out
             # and calculating the final score by using a modified loss from this target
@@ -506,52 +447,3 @@ class DecodeModel(pl.LightningModule):
         # Now, use the hyp-indices with the potentially corrected score to return the single-best hyps for each
         # request based on the k-best beam search results.
         return [Hypothesis(hyp, score, "l2r") for (hyp, score) in zip(hyps[:batch_size], scores[:batch_size])]
-
-def generate_next_inputs(
-        src: FloatTensor,
-        src_mask: LongTensor,
-        beam_managers: List[BeamManager],
-        device: torch.device
-):
-    """Helper function to generate the model inputs based on the current beams
-        Parameters
-        ----------
-        src : FloatTensor
-            [b, t, d]
-        src_mask : LongTensor
-            [b, t]
-        beam_managers : List[BeamManager]
-        device : torch.device       where to create the returned tensors
-
-        Returns
-        _______
-        Tuple[
-            FloatTensor, # [ (variable-active-beams), t, d ] next_src, repeats src[i] if a beam manager for this batch-entry is active
-            FloatTensor, # [ (variable-active-beams), t, d ] next_src, repeats src[i] if a beam manager for this batch-entry is active
-            LongTensor,
-       ]
-            List[LongTensor]: [b * beam_size] without SOS or EOS token
-            FloatTensor: [b * beam_size] corresponding scores
-        """
-    repeats = torch.zeros((src.shape[0],), dtype=torch.int, device=device)
-    current_ids: List[List[LongTensor]] = [[] for _ in iter.repeat(None, src.shape[0])]
-    bm_refs: List[List[Tuple[int, int]]] = [[] for _ in iter.repeat(None, src.shape[0])]
-
-    empty = True
-    for idx, bm in enumerate(beam_managers):
-        active_beams = bm.active_beams.shape[0]
-        if active_beams > 0:
-            empty = False
-            repeats[bm.src_idx] = repeats[bm.src_idx] + active_beams
-            current_ids[bm.src_idx].append(bm.active_beams)
-            bm_refs[bm.src_idx].append((idx, active_beams))
-
-    if empty:
-        return torch.empty((0,), device=device), torch.empty((0,), device=device), torch.empty((0,), device=device), []
-
-    return (
-        torch.repeat_interleave(src, repeats, dim=0),
-        torch.repeat_interleave(src_mask, repeats, dim=0),
-        torch.cat(list(iter.chain.from_iterable(current_ids)), dim=0),
-        list(iter.chain.from_iterable(bm_refs))
-    )

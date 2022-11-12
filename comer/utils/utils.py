@@ -111,7 +111,6 @@ def to_tgt_output(
         batched_tokens = [torch.tensor(single_tokens, dtype=torch.long) for single_tokens in batched_tokens]
 
     if direction == "l2r":
-        batched_tokens = batched_tokens
         start_w = vocab.SOS_IDX
         stop_w = vocab.EOS_IDX
     else:
