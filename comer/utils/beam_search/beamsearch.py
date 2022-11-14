@@ -9,21 +9,30 @@ import itertools
 
 
 class BatchedBeamSearch:
+    """
+        The BatchedBeamSearch class manages the complete variable-width BeamSearch for a single Batch.
+        It supports bidirectional decoding and instantiates the needed BeamManagers for updating the active candidates.
+        If no active beams have changed, the inputs from the batch will not be re-copied.
+    """
+
     def __init__(self,
                  max_beams: int,
                  device: torch.device,
                  max_len: int,
                  bi_dir: bool = False,
+                 find_top_k: int = 1,
                  max_candidates_per_node: int = 20,
-                 absolute_pruning_threshold: float = 5,
-                 relative_pruning_threshold: float = 5,
+                 absolute_pruning_threshold: float = float('Inf'),
+                 relative_pruning_threshold: float = float('Inf'),
                  # relative_local_pruning_threshold: float = 5,
                  length_penalty: float = 1.0,
                  min_normalized_pseudo_probabilty: float = invalid_score,
                  temperature: float = 1.0,
+                 debug: bool = False
                  ):
         self.max_beams = max_beams
-        self.bir_dir = bi_dir
+        self.bi_dir = bi_dir
+        self.find_top_k = find_top_k
         self.device = device
         self.max_len = max_len
         self.temperature = temperature
@@ -60,6 +69,8 @@ class BatchedBeamSearch:
         self.stats_repeated_src = 0
         self.stats_total_steps = 0
 
+        self.debug = debug
+
     def reset(self):
         self.beam_managers = []
         self.done = False
@@ -89,11 +100,13 @@ class BatchedBeamSearch:
                 is_l2r=True,
                 device=self.device,
                 max_len=self.max_len,
-                global_min_norm_threshold=self.min_normalized_hyp_score
+                global_min_norm_threshold=self.min_normalized_hyp_score,
+                save_best_k=self.find_top_k,
+                debug=self.debug
             ) for src_idx in range(batch_size)
         ]
 
-        if self.bir_dir:
+        if self.bi_dir:
             beam_managers = beam_managers + [
                 BeamManager(
                     max_beams=self.max_beams,
@@ -101,7 +114,9 @@ class BatchedBeamSearch:
                     is_l2r=False,
                     device=self.device,
                     max_len=self.max_len,
-                    global_min_norm_threshold=self.min_normalized_hyp_score
+                    global_min_norm_threshold=self.min_normalized_hyp_score,
+                    save_best_k=self.find_top_k,
+                    debug=self.debug
                 ) for src_idx in range(batch_size)
             ]
 
@@ -126,7 +141,7 @@ class BatchedBeamSearch:
                     dim=-1
                 ),
                 k=self.max_beams,
-                sorted=False
+                sorted=True
             )
             current_beam_idx = 0
             for (bm_ref, amount_active_beams) in self.next_bm_refs:
@@ -134,14 +149,37 @@ class BatchedBeamSearch:
                 beam_managers[bm_ref].update(topk_for_active_beams_scores[current_beam_idx:next_beam_idx, :],
                                              topk_for_active_beams_indices[current_beam_idx:next_beam_idx, :])
                 current_beam_idx = next_beam_idx
-        hyps: List[LongTensor] = []
-        scores: Union[Tensor, List[Tensor]] = []
+
+        hyps_l2r: List[List[LongTensor]] = [[] for _ in itertools.repeat(None, batch_size)]
+        scores_l2r: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
+        hyps_r2l = [[]]
+        scores_r2l = [[]]
+        if self.bi_dir:
+            hyps_r2l: List[List[LongTensor]] = [[] for _ in itertools.repeat(None, batch_size)]
+            scores_r2l: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
+
+        repeats = torch.zeros((src.shape[0],), dtype=torch.int, device=self.device)
+        r2l_start_indices = torch.zeros((src.shape[0],), dtype=torch.int, device=self.device)
         for bm in beam_managers:
-            score, hyp = bm.get_best_l2r_finalized()
-            scores.append(score.unsqueeze(0))
-            hyps.append(hyp)
-        scores = torch.cat(scores)
-        return hyps, scores
+            best_hyps = bm.get_best_l2r_finalized()
+            repeats[bm.src_idx] += len(best_hyps)
+            if bm.is_direction_l2r:
+                r2l_start_indices[bm.src_idx] += len(best_hyps)
+                for (score, seq) in best_hyps:
+                    hyps_l2r[bm.src_idx].append(seq)
+                    scores_l2r[bm.src_idx].append(score.unsqueeze(0))
+            else:
+                for (score, seq) in best_hyps:
+                    hyps_r2l[bm.src_idx].append(seq)
+                    scores_r2l[bm.src_idx].append(score.unsqueeze(0))
+        flattened_scores_l2r = list(itertools.chain.from_iterable(scores_l2r))
+        flattened_scores_r2l = list(itertools.chain.from_iterable(scores_r2l))
+        return list(itertools.chain.from_iterable(hyps_l2r)), \
+               torch.cat(flattened_scores_l2r, dim=0) if len(flattened_scores_l2r) > 0 else self.empty_tensor, \
+               list(itertools.chain.from_iterable(hyps_r2l)), \
+               torch.cat(flattened_scores_r2l, dim=0) if len(flattened_scores_r2l) > 0 else self.empty_tensor, \
+               repeats, \
+               r2l_start_indices
 
     def generate_next_inputs(
             self,
@@ -185,7 +223,7 @@ class BatchedBeamSearch:
 
         for idx, bm in enumerate(beam_managers):
             # Did the BM change its beams?
-            any_bm_beams_changed = any_bm_beams_changed or bm.beam_amount_changed_last_update
+            any_bm_beams_changed |= bm.beam_amount_changed_last_update
             bm.beam_amount_changed_last_update = False
             active_beams = bm.active_beams
             active_beams_size = bm.active_beams.shape[0]
@@ -211,6 +249,6 @@ class BatchedBeamSearch:
         self.next_input_ids = torch.cat(list(itertools.chain.from_iterable(current_ids)), dim=0)
         if any_bm_beams_changed:
             self.stats_repeated_src += 1
-            self.next_src = torch.repeat_interleave(src, repeats, dim=0),
+            self.next_src = torch.repeat_interleave(src, repeats, dim=0)
             self.next_src_mask = torch.repeat_interleave(src_mask, repeats, dim=0)
             self.next_bm_refs = list(itertools.chain.from_iterable(bm_refs))

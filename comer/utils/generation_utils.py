@@ -52,6 +52,7 @@ class DecodeModel(pl.LightningModule):
             temperature: float,
             bi_dir: bool = True,
             scoring_run: bool = True,
+            debug: bool = False
     ) -> List[Hypothesis]:
         """run beam search to decode
 
@@ -131,6 +132,11 @@ class DecodeModel(pl.LightningModule):
             for i in range(r2l_start_idx, batch_beam_size):
                 hyps[i] = torch.flip(hyps[i], dims=[0])
 
+        if debug:
+            print("score before")
+            for i, hyp in enumerate(hyps):
+                print(f"{scores[i]:.4f}", vocab.indices2words(hyp.tolist()))
+
         # Now we can guarantee that every hyp is in "l2r" form.
 
         if scoring_run and bi_dir:
@@ -158,7 +164,20 @@ class DecodeModel(pl.LightningModule):
                 rev_scores = torch.cat(
                     (rev_scores[r2l_start_idx:], rev_scores[:r2l_start_idx]), dim=0
                 )
+            if debug:
+                print("rev_scores:")
+                for i, single_tgt in enumerate(tgt):
+                    if i < r2l_start_idx:
+                        idx = i + r2l_start_idx
+                    else:
+                        idx = i - r2l_start_idx
+                    print(f"{rev_scores[i]:.4f}", vocab.indices2words(tgt[idx].tolist()), "for",
+                          vocab.indices2words(hyps[i].tolist()))
             scores = scores + rev_scores
+        if debug:
+            print("score after")
+            for i, hyp in enumerate(hyps):
+                print(f"{scores[i]:.4f}", vocab.indices2words(hyp.tolist()))
         # Scores dim: [(2 *, if bi_dir )b * beam_size]
         # Goal now: Rearrange to [b, (2 *, if bi_dir )beam_size], s.t. we can choose the best ones from either direction
         scores = rearrange(scores, "(b m) -> b m", b=batch_size)
@@ -375,6 +394,7 @@ class DecodeModel(pl.LightningModule):
             temperature: float,
             bi_dir: bool = True,
             scoring_run: bool = True,
+            debug: bool = False
     ) -> List[Hypothesis]:
         """run beam search to decode
         Parameters
@@ -401,49 +421,114 @@ class DecodeModel(pl.LightningModule):
             self.device,
             max_len,
             bi_dir,
-            temperature=temperature
+            temperature=temperature,
+            find_top_k=beam_size,
+            debug=debug
         )
-        hyps, scores = beamsearch.predict(self, src, src_mask)
-
-        batch_size = src.shape[0]
-        if scoring_run and bi_dir:
+        hyps_l2r, scores_l2r, hyps_r2l, scores_r2l, repeats, r2l_offsets = beamsearch.predict(self, src, src_mask)
+        hyps_l2r_len = len(hyps_l2r)
+        hyps_rl2_len = len(hyps_r2l)
+        if debug:
+            print("l2r_hyps:")
+            for i, hyp in enumerate(hyps_l2r):
+                print(f"{scores_l2r[i]:.4f}", vocab.indices2words(hyp.tolist()))
+            print("rl2_hyps:")
+            for i, hyp in enumerate(hyps_r2l):
+                print(f"{scores_r2l[i]:.4f}", vocab.indices2words(hyp.tolist()))
+        if scoring_run and bi_dir and (hyps_rl2_len + hyps_rl2_len) > 0:
             # compute the final score, by using the reversed sequence as target/out
             # and calculating the final score by using a modified loss from this target
             # thus, we score the model by using the opposite direction as target
 
             # plus to append start token
+            max_l2r = max([len(h) for h in hyps_l2r]) if hyps_l2r_len > 0 else 0
+            max_r2l = max([len(h) for h in hyps_r2l]) if len(hyps_r2l) > 0 else 0
 
-            max_len = max([len(h) + 1 for h in hyps])
+            max_len = max([max_l2r, max_r2l]) + 1
 
             # start with l2r reversing
-            r2l_tgt, r2l_out = to_tgt_output(
-                hyps[:batch_size], "r2l", self.device, pad_to_len=max_len
-            )
-            l2r_tgt, l2r_out = to_tgt_output(
-                hyps[batch_size:], "l2r", self.device, pad_to_len=max_len
-            )
-            tgt = torch.cat((l2r_tgt, r2l_tgt), dim=0)
-            out = torch.cat((l2r_out, r2l_out), dim=0)
+            if hyps_l2r_len > 0:
+                r2l_tgt, r2l_out = to_tgt_output(
+                    hyps_l2r, "r2l", self.device, pad_to_len=max_len
+                )
+                tgt, out = r2l_tgt, r2l_out
+            if hyps_rl2_len > 0:
+                l2r_tgt, l2r_out = to_tgt_output(
+                    hyps_r2l, "l2r", self.device, pad_to_len=max_len
+                )
+                tgt, out = l2r_tgt, l2r_out
+            if hyps_rl2_len > 0 and hyps_l2r_len > 0:
+                tgt = torch.cat((r2l_tgt, l2r_tgt), dim=0)
+                out = torch.cat((r2l_out, l2r_out), dim=0)
 
-            # calculate final score, by passing
+            r2l_repeats = repeats - r2l_offsets
             rev_scores = self._new_rate(
-                torch.cat((src, src)),
-                torch.cat((src_mask, src_mask)),
+                torch.cat(
+                    (
+                        torch.repeat_interleave(src, r2l_offsets, dim=0),
+                        torch.repeat_interleave(src, r2l_repeats, dim=0),
+                    ), dim=0
+                ),
+                torch.cat(
+                    (
+                        torch.repeat_interleave(src_mask, r2l_offsets, dim=0),
+                        torch.repeat_interleave(src_mask, r2l_repeats, dim=0),
+                    ), dim=0
+                ),
                 tgt, out, alpha, temperature
             )
-            # flip order of the scores from [l2r r2l] -> [r2l l2r]
-            rev_scores = torch.cat(
-                (rev_scores[batch_size:], rev_scores[:batch_size]), dim=0
-            )
+            if debug:
+                print("rev_scores:")
+                for i, single_tgt in enumerate(tgt):
+                    if i < hyps_l2r_len:
+                        print(f"{rev_scores[i]:.4f}", vocab.indices2words(single_tgt.tolist()), "for (l2r)",
+                              vocab.indices2words(hyps_l2r[i].tolist()))
+                    else:
+                        print(f"{rev_scores[i]:.4f}", vocab.indices2words(single_tgt.tolist()), "for (r2l)",
+                              vocab.indices2words(hyps_r2l[i - hyps_l2r_len].tolist()))
 
-            scores = scores + rev_scores
-        if bi_dir:
-            # Choose either the l2r or the r2l hypothesis, based on score
-            for i in range(batch_size):
-                if scores[i] < scores[batch_size + i]:
-                    scores[i] = scores[batch_size + i]
-                    hyps[i] = hyps[batch_size + i]
-
-        # Now, use the hyp-indices with the potentially corrected score to return the single-best hyps for each
-        # request based on the k-best beam search results.
-        return [Hypothesis(hyp, score, "l2r") for (hyp, score) in zip(hyps[:batch_size], scores[:batch_size])]
+            scores_l2r += rev_scores[:hyps_l2r_len]
+            scores_r2l += rev_scores[hyps_l2r_len:]
+        if debug:
+            print("corrected l2r_hyps:")
+            for i, hyp in enumerate(hyps_l2r):
+                print(f"{scores_l2r[i]:.4f}", vocab.indices2words(hyp.tolist()))
+            print("corrected rl2_hyps:")
+            for i, hyp in enumerate(hyps_r2l):
+                print(f"{scores_r2l[i]:.4f}", vocab.indices2words(hyp.tolist()))
+        output_hyps: List[Hypothesis] = []
+        curr_offset_l2r = 0
+        curr_offset_r2l = 0
+        # print(scores_l2r, scores_r2l)
+        # print(repeats, r2l_offsets)
+        for src_idx, candidate_len in enumerate(repeats):
+            # choose the best candidate for each input from the batch
+            curr_best_idx = -1
+            curr_best_idx_from_l2r = True
+            curr_best_score = float('-Inf')
+            r2l_offset = r2l_offsets[src_idx]
+            for i in range(candidate_len):
+                if i >= r2l_offset:
+                    hyp_cand_idx = curr_offset_r2l + i - r2l_offset
+                    hyp_cand_score = scores_r2l[hyp_cand_idx]
+                else:
+                    hyp_cand_idx = curr_offset_l2r + i
+                    hyp_cand_score = scores_l2r[hyp_cand_idx]
+                if hyp_cand_score > curr_best_score:
+                    curr_best_idx = hyp_cand_idx
+                    curr_best_score = hyp_cand_score
+                    curr_best_idx_from_l2r = i < r2l_offset
+            curr_offset_r2l += candidate_len - r2l_offsets[src_idx]
+            curr_offset_l2r += r2l_offsets[src_idx]
+            if curr_best_idx != -1:
+                if curr_best_idx_from_l2r:
+                    output_hyps.append(
+                        Hypothesis(hyps_l2r[curr_best_idx], scores_l2r[curr_best_idx], "l2r")
+                    )
+                else:
+                    output_hyps.append(
+                        Hypothesis(hyps_r2l[curr_best_idx], scores_r2l[curr_best_idx], "l2r")
+                    )
+            else:
+                output_hyps.append(Hypothesis(torch.empty(0, device=self.device), float('-Inf'), "l2r"))
+        return output_hyps

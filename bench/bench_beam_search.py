@@ -100,7 +100,7 @@ def run_benchmarks(
     full(batch, model, shapes)
     print("done")
 
-    benches = [full, one_by_one_padded, two_by_two_padded, one_by_one_unpadded]
+    benches = [full]
     results: List[Tuple[str, float]] = []
 
     for bench in benches:

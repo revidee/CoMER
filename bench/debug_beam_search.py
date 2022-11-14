@@ -48,6 +48,12 @@ def main(gpu: int = 1):
                 hyps_new = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True)
                 for i, hyp_old in enumerate(hyps):
                     if hyp_old.seq != hyps_new[i].seq:
+                        print("OLD:")
+                        model.approximate_joint_search(batch.imgs, batch.mask, use_new=False, debug=True)
+                        print("")
+                        print("")
+                        print("NEW:")
+                        model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=True)
                         print("mismatch", batch.img_bases[0], idx)
                         print("old: ", vocab.indices2words(hyp_old.seq))
                         print("new: ", vocab.indices2words(hyps_new[i].seq))
