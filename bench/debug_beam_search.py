@@ -10,9 +10,10 @@ from comer.datamodules.crohme import extract_data_entries, DataEntry, vocab
 from comer.datamodules.crohme.batch import build_batches_from_samples, BatchTuple, Batch
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.modules import CoMERSupervised
+from torch.profiler import profile, record_function, ProfilerActivity
 
-# checkpoint_path = "./bench/epoch3.ckpt"
-checkpoint_path = "./bench/baseline_t112.ckpt"
+checkpoint_path = "./bench/epoch3.ckpt"
+# checkpoint_path = "./bench/baseline_t112.ckpt"
 
 
 def main(gpu: int = 1):
@@ -35,31 +36,40 @@ def main(gpu: int = 1):
 
             batch_tuple: List[BatchTuple] = build_batches_from_samples(
                 extract_data_entries(archive, "2014", to_device=device),
-                1,
+                4,
                 batch_imagesize=(2200 * 250 * 4),
                 max_imagesize=(2200 * 250),
                 is_labled=True,
                 include_last_only_full=True
-            )
-
+            )[::-1]
+            start_time = time.time()
             for idx, batch_tup in enumerate(batch_tuple):
+                if idx > 0:
+                    break
                 batch: Batch = collate_fn([batch_tup]).to(device)
-                hyps = model.approximate_joint_search(batch.imgs, batch.mask, use_new=False)
-                hyps_new = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True)
-                for i, hyp_old in enumerate(hyps):
-                    if hyp_old.seq != hyps_new[i].seq:
-                        print("OLD:")
-                        model.approximate_joint_search(batch.imgs, batch.mask, use_new=False, debug=True)
-                        print("")
-                        print("")
-                        print("NEW:")
-                        model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=True)
-                        print("mismatch", batch.img_bases[0], idx)
-                        print("old: ", vocab.indices2words(hyp_old.seq))
-                        print("new: ", vocab.indices2words(hyps_new[i].seq))
-                        exit(1)
+                hyps = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False)
+                for i, hyp in enumerate(hyps):
+                    print(batch.img_bases[i], vocab.indices2words(hyp.seq))
+                # hyps = model.approximate_joint_search(batch.imgs, batch.mask, use_new=False)
+                # hyps_new = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True)
+                # for i, hyp_old in enumerate(hyps):
+                #     if hyp_old.seq != hyps_new[i].seq:
+                #         print("OLD:")
+                #         model.approximate_joint_search(batch.imgs, batch.mask, use_new=False, debug=True)
+                #         print("")
+                #         print("")
+                #         print("NEW:")
+                #         model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=True)
+                #         print("mismatch", batch.img_bases[0], idx)
+                #         print("old: ", vocab.indices2words(hyp_old.seq))
+                #         print("new: ", vocab.indices2words(hyps_new[i].seq))
+                #         exit(1)
+            # prof.export_stacks("profiler_stacks_gpu.txt", "self_cuda_time_total")
+            # prof.export_stacks("profiler_stacks_cpu.txt", "self_cpu_time_total")
+            # torch.save(prof.key_averages().table(sort_by="self_cpu_time_total"), "profiler_table.txt")
+            # prof.export_chrome_trace("profiler_chrome.json")
+            print("total: ", time.time() - start_time)
 
-            print(batch.img_bases)
 
             # n = 2
             # print(f"benching normal {n} times")

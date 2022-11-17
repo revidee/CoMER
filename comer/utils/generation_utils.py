@@ -425,26 +425,20 @@ class DecodeModel(pl.LightningModule):
             find_top_k=beam_size,
             debug=debug
         )
-        hyps_l2r, scores_l2r, hyps_r2l, scores_r2l, repeats, r2l_offsets = beamsearch.predict(self, src, src_mask)
+        hyps_l2r, scores_l2r, repeats_l2r, hyps_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
+
         hyps_l2r_len = len(hyps_l2r)
         hyps_rl2_len = len(hyps_r2l)
-        if debug:
-            print("l2r_hyps:")
-            for i, hyp in enumerate(hyps_l2r):
-                print(f"{scores_l2r[i]:.4f}", vocab.indices2words(hyp.tolist()))
-            print("rl2_hyps:")
-            for i, hyp in enumerate(hyps_r2l):
-                print(f"{scores_r2l[i]:.4f}", vocab.indices2words(hyp.tolist()))
         if scoring_run and bi_dir and (hyps_rl2_len + hyps_rl2_len) > 0:
             # compute the final score, by using the reversed sequence as target/out
-            # and calculating the final score by using a modified loss from this target
-            # thus, we score the model by using the opposite direction as target
+            # and adding a custom loss to the score.
+            # thus, we re-score the hyps by using the opposite direction as target
 
             # plus to append start token
             max_l2r = max([len(h) for h in hyps_l2r]) if hyps_l2r_len > 0 else 0
             max_r2l = max([len(h) for h in hyps_r2l]) if len(hyps_r2l) > 0 else 0
 
-            max_len = max([max_l2r, max_r2l]) + 1
+            max_len = max((max_l2r, max_r2l)) + 1
 
             # start with l2r reversing
             if hyps_l2r_len > 0:
@@ -461,18 +455,17 @@ class DecodeModel(pl.LightningModule):
                 tgt = torch.cat((r2l_tgt, l2r_tgt), dim=0)
                 out = torch.cat((r2l_out, l2r_out), dim=0)
 
-            r2l_repeats = repeats - r2l_offsets
             rev_scores = self._new_rate(
                 torch.cat(
                     (
-                        torch.repeat_interleave(src, r2l_offsets, dim=0),
-                        torch.repeat_interleave(src, r2l_repeats, dim=0),
+                        torch.repeat_interleave(src, repeats_l2r, dim=0),
+                        torch.repeat_interleave(src, repeats_r2l, dim=0),
                     ), dim=0
                 ),
                 torch.cat(
                     (
-                        torch.repeat_interleave(src_mask, r2l_offsets, dim=0),
-                        torch.repeat_interleave(src_mask, r2l_repeats, dim=0),
+                        torch.repeat_interleave(src_mask, repeats_l2r, dim=0),
+                        torch.repeat_interleave(src_mask, repeats_r2l, dim=0),
                     ), dim=0
                 ),
                 tgt, out, alpha, temperature
@@ -489,37 +482,32 @@ class DecodeModel(pl.LightningModule):
 
             scores_l2r += rev_scores[:hyps_l2r_len]
             scores_r2l += rev_scores[hyps_l2r_len:]
-        if debug:
-            print("corrected l2r_hyps:")
-            for i, hyp in enumerate(hyps_l2r):
-                print(f"{scores_l2r[i]:.4f}", vocab.indices2words(hyp.tolist()))
-            print("corrected rl2_hyps:")
-            for i, hyp in enumerate(hyps_r2l):
-                print(f"{scores_r2l[i]:.4f}", vocab.indices2words(hyp.tolist()))
         output_hyps: List[Hypothesis] = []
         curr_offset_l2r = 0
         curr_offset_r2l = 0
-        # print(scores_l2r, scores_r2l)
-        # print(repeats, r2l_offsets)
-        for src_idx, candidate_len in enumerate(repeats):
+        # Find the best hyp from the (optionally rescored) set of best l2r/r2l hyps.
+        for src_idx, (len_l2r, len_r2l) in enumerate(zip(repeats_l2r, repeats_r2l)):
             # choose the best candidate for each input from the batch
             curr_best_idx = -1
             curr_best_idx_from_l2r = True
             curr_best_score = float('-Inf')
-            r2l_offset = r2l_offsets[src_idx]
-            for i in range(candidate_len):
-                if i >= r2l_offset:
-                    hyp_cand_idx = curr_offset_r2l + i - r2l_offset
-                    hyp_cand_score = scores_r2l[hyp_cand_idx]
-                else:
-                    hyp_cand_idx = curr_offset_l2r + i
-                    hyp_cand_score = scores_l2r[hyp_cand_idx]
+            for i in range(len_l2r):
+                hyp_cand_idx = curr_offset_l2r + i
+                hyp_cand_score = scores_l2r[hyp_cand_idx]
                 if hyp_cand_score > curr_best_score:
                     curr_best_idx = hyp_cand_idx
                     curr_best_score = hyp_cand_score
-                    curr_best_idx_from_l2r = i < r2l_offset
-            curr_offset_r2l += candidate_len - r2l_offsets[src_idx]
-            curr_offset_l2r += r2l_offsets[src_idx]
+                    curr_best_idx_from_l2r = True
+            for i in range(len_r2l):
+                hyp_cand_idx = curr_offset_r2l + i
+                hyp_cand_score = scores_r2l[hyp_cand_idx]
+                if hyp_cand_score > curr_best_score:
+                    curr_best_idx = hyp_cand_idx
+                    curr_best_score = hyp_cand_score
+                    curr_best_idx_from_l2r = False
+
+            curr_offset_r2l += len_r2l
+            curr_offset_l2r += len_l2r
             if curr_best_idx != -1:
                 if curr_best_idx_from_l2r:
                     output_hyps.append(
@@ -530,5 +518,5 @@ class DecodeModel(pl.LightningModule):
                         Hypothesis(hyps_r2l[curr_best_idx], scores_r2l[curr_best_idx], "l2r")
                     )
             else:
-                output_hyps.append(Hypothesis(torch.empty(0, device=self.device), float('-Inf'), "l2r"))
+                output_hyps.append(Hypothesis(torch.empty(0, device=self.device, dtype=torch.long), float('-Inf'), "l2r"))
         return output_hyps
