@@ -1,5 +1,5 @@
 import zipfile
-from typing import List
+from typing import List, Tuple
 
 import pytorch_lightning as pl
 import torch.optim as optim
@@ -113,18 +113,24 @@ class CoMERSupervised(pl.LightningModule):
     def test_step(self, batch: Batch, _):
         hyps = self.approximate_joint_search(batch.imgs, batch.mask)
         self.exprate_recorder([h.seq for h in hyps], batch.labels)
-        return batch.img_bases, [vocab.indices2label(h.seq) for h in hyps]
+        return batch.img_bases, [vocab.indices2label(h.seq) for h in hyps], [len(h.seq) for h in hyps], [h.score for h in hyps]
 
-    def test_epoch_end(self, test_outputs) -> None:
+    def test_epoch_end(self, test_outputs: List[Tuple[List[str], List[str], List[int], List[float]]]) -> None:
         exprate = self.exprate_recorder.compute()
         print(f"Validation ExpRate: {exprate}")
 
         with zipfile.ZipFile("result.zip", "w") as zip_f:
-            for img_bases, preds in test_outputs:
+            for img_bases, preds, _, _ in test_outputs:
                 for img_base, pred in zip(img_bases, preds):
                     content = f"%{img_base}\n${pred}$".encode()
                     with zip_f.open(f"{img_base}.txt", "w") as f:
                         f.write(content)
+        with open("stats.txt", "w") as file:
+            for img_bases, preds, lens, scores in test_outputs:
+                for img_base, pred, length, score in zip(img_bases, preds, lens, scores):
+                    file.write(f"{img_base},{pred},{length},{score}\n")
+            file.close()
+
 
     def approximate_joint_search(
         self, img: FloatTensor, mask: LongTensor, use_new: bool = True, debug=False

@@ -90,6 +90,7 @@ python -m scripts.test.test $chk_point_path --year $test_year --gpu $gpu
 
 mkdir -p $out_dir/test_temp/
 mv result.zip $out_dir/$test_year.zip
+mv stats.txt $out_dir/"$test_year"_stats.txt
 unzip -q $out_dir/$test_year.zip -d $out_dir/test_temp/result
 
 # convert tex to symlg
@@ -100,6 +101,7 @@ evaluate $out_dir/test_temp/pred_symlg $data_dir/$test_year/symLg >/dev/null 2>&
 
 # copy results
 cp ./Results_pred_symlg/Summary.txt $out_dir/"$test_year"_Summary.txt
+cp ./Results_pred_symlg/FileMetrics.csv $out_dir/"$test_year"_FileMetrics.csv
 
 # extract evaluation result and save to target folder
 python -m scripts.test.extract_exprate 4 >&1 | tee $out_dir/$test_year.txt

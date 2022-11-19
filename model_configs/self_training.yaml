@@ -25,10 +25,10 @@ fit:
       class_path: comer.lit_extensions.DDPUnlabeledStrategy
       init_args:
         find_unused_parameters: False
-    check_val_every_n_epoch: 4
+    check_val_every_n_epoch: 2
     max_epochs: 300
     deterministic: true
-    reload_dataloaders_every_n_epochs: 4
+    reload_dataloaders_every_n_epochs: 2
   model:
     class_path: comer.modules.CoMERSelfTraining
     init_args:
@@ -53,6 +53,7 @@ fit:
       # training
       learning_rate: 0.08
       patience: 20
+      pseudo_labeling_threshold: 0.95
   data:
     class_path: comer.datamodules.CROHMESelfTrainingDatamodule
     init_args:

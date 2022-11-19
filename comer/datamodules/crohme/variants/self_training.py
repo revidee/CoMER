@@ -14,16 +14,14 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
     def setup(self, stage: Optional[str] = None) -> None:
         with ZipFile(self.zipfile_path) as archive:
             if stage == "fit" or stage is None:
-                train_labeled, train_unlabled = build_dataset(archive, "train", self.train_batch_size,
-                                                              unlabeled_factor=0.5)
-
-                # "dynamic dataset"
-                self.train_unlabled_ds = train_unlabled
-                self.trainer.unlabeled_pseudo_labels = [[[] for _ in unl_batch[0]] for unl_batch in self.train_unlabled_ds]
+                # "dynamictaset"
+                _, train_unlabeled = build_dataset(archive, self.test_year, self.eval_batch_size, unlabeled_pct=1)
+                self.train_unlabeled_ds = train_unlabeled
+                self.trainer.unlabeled_pseudo_labels = [[[] for _ in unl_batch[0]] for unl_batch in self.train_unlabeled_ds]
 
                 # "static" datasets
                 self.train_labeled_dataset = CROHMEDataset(
-                    train_labeled,
+                    build_dataset(archive, "train", self.train_batch_size)[0],
                     True,
                     self.scale_aug,
                 )
@@ -46,7 +44,7 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
         for idx, pseudo_labels_for_batch in enumerate(self.trainer.unlabeled_pseudo_labels):
             for single_item_label in pseudo_labels_for_batch:
                 if len(single_item_label) > 0:
-                    src_batch = self.train_unlabled_ds[idx]
+                    src_batch = self.train_unlabeled_ds[idx]
                     src_batch[2].clear()
                     src_batch[2].extend(pseudo_labels_for_batch)
                     filtered_batches.append(src_batch)
@@ -56,12 +54,12 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
 
     def all_unlabeled_with_potential_pseudos(self):
         if self.trainer is None or self.trainer.unlabeled_pseudo_labels is None:
-            return self.train_unlabled_ds
-        for idx, src_batch in enumerate(self.train_unlabled_ds):
+            return self.train_unlabeled_ds
+        for idx, src_batch in enumerate(self.train_unlabeled_ds):
             pseudos = self.trainer.unlabeled_pseudo_labels[idx]
-            self.train_unlabled_ds[idx][2].clear()
-            self.train_unlabled_ds[idx][2].extend(pseudos)
-        return self.train_unlabled_ds
+            self.train_unlabeled_ds[idx][2].clear()
+            self.train_unlabeled_ds[idx][2].extend(pseudos)
+        return self.train_unlabeled_ds
 
     def train_dataloader(self):
         train_sets = [

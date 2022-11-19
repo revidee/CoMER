@@ -83,7 +83,7 @@ def build_batch_split_from_entries(
         batch_imagesize: int = MAX_SIZE,
         maxlen: int = 200,
         max_imagesize: int = MAX_SIZE,
-        unlabeled_factor: float = 0
+        unlabeled_pct: float = 0
 ) -> Tuple[List[BatchTuple], List[BatchTuple]]:
     total_len = len(data)
 
@@ -91,10 +91,12 @@ def build_batch_split_from_entries(
     np.random.seed(torch.initial_seed())
     np.random.shuffle(random_idx_order)
 
-    if unlabeled_factor < 0:
-        unlabeled_factor = 0
+    if unlabeled_pct < 0:
+        unlabeled_pct = 0
+    if unlabeled_pct > 1:
+        unlabeled_pct = 1
 
-    labeled_end = int(total_len // (unlabeled_factor + 1))
+    labeled_end = int(total_len * (1 - unlabeled_pct))
 
     return (
         # labeled batches
@@ -222,7 +224,7 @@ def build_dataset(
         archive: ZipFile,
         folder: str,
         batch_size: int,
-        unlabeled_factor: float = 0,
+        unlabeled_pct: float = 0,
 ) -> Tuple[List[BatchTuple], List[BatchTuple]]:
     return build_batch_split_from_entries(extract_data_entries(archive, folder), batch_size,
-                                          unlabeled_factor=unlabeled_factor)
+                                          unlabeled_pct=unlabeled_pct)

@@ -1,43 +1,34 @@
-import time
+import math
 from typing import List, Tuple, Iterable, Union, Callable
 
 import torch
-from pytorch_lightning.trainer.progress import BatchProgress
+import torch.distributed as dist
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
 from torch import optim
-import torch.distributed as dist
 
 from comer.datamodules.crohme import Batch, vocab
-from comer.modules.supervised import CoMERSupervised
 from comer.lit_extensions import UnlabeledLightningModule
+from comer.modules.supervised import CoMERSupervised
 from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out)
-
+import numpy as np
 
 class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
+
+    def __init__(
+            self,
+            pseudo_labeling_threshold: float,
+            **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.pseudo_labeling_threshold = np.log(pseudo_labeling_threshold)
+
     def training_step(self, batch: Batch, _):
         tgt, out = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 
         loss = ce_loss(out_hat, out)
         self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch.imgs.shape[0])
-        # Check what unlabeled images got pseudo-labels and train on them
-        # with torch.no_grad():
-        #     batch.labels = [h.seq for h in self.approximate_joint_search(batch.imgs, batch.mask)]
-        # np_labels = np.array(batch.labels, dtype=np.object)
-        # valid_unlabeled_samples = torch.BoolTensor([len(x) > 0 for x in batch.labels])
-        #
-        # if valid_unlabeled_samples.any():
-        #     # We do have "valid" pseudo-labels for self-training
-        #     # use them to train as usual
-        #     tgt, out = to_bi_tgt_out(np_labels[valid_unlabeled_samples.detach().numpy().astype(bool)].tolist(), self.device)
-        #     out_hat = self(batch.imgs[valid_unlabeled_samples], batch.mask[valid_unlabeled_samples], tgt)
-        #
-        #     loss = ce_loss(out_hat, out)
-        #     self.log("train_loss", loss, on_step=False, on_epoch=True,
-        #              sync_dist=True, batch_size=valid_unlabeled_samples.count_nonzero())
-        #     self.log("train_loss_unl", loss, on_step=False, on_epoch=True,
-        #              sync_dist=True, batch_size=valid_unlabeled_samples.count_nonzero())
         return loss
 
     def configure_optimizers(self):
@@ -69,8 +60,6 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
 
     def unlabeled_full(self, data_fetcher: AbstractDataFetcher,
                        start_batch: Callable, end_batch: Callable, dataloader_idx: int):
-
-        start_time = time.time()
         is_iter_data_fetcher = isinstance(data_fetcher, DataLoaderIterDataFetcher)
         batch_indices: List[int] = []
         pseudo_labels: List[List[List[str]]] = []
@@ -88,21 +77,17 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
                 batch_idx = batch_idx + 1
 
                 batch_indices.append(batch.src_idx)
-                # batch_labels: List[List[str]] = []
-                # for i in range(batch.imgs.size(0)):
-                #     batch_labels.append(
-                #         vocab.indices2words(
-                #             self.approximate_joint_search(batch.imgs[i:i + 1], batch.mask[i:i + 1])[0].seq
-                #         )
-                #     )
-                # pseudo_labels.append(batch_labels)
+                # Why h.score / 2?
+                # h.score is re-weighted by a final scoring run,
+                # adding the loss of a reversed target sequence to the normalized log-likelihood of the beam search.
+                # By dividing with 2, we average between these to get a kind-of log-likelihood again.
                 pseudo_labels.append(
-                    [vocab.indices2words(h.seq) for h in self.approximate_joint_search(batch.imgs, batch.mask)]
+                    [
+                        vocab.indices2words(h.seq) if (h.score / 2) >= self.pseudo_labeling_threshold
+                        else [] for h in self.approximate_joint_search(batch.imgs, batch.mask)]
                 )
 
                 end_batch(batch, batch_idx)
-
-        print(f"pseudo_time[{self.global_rank}]: {time.time() - start_time}")
         return zip(batch_indices, pseudo_labels)
 
     def validation_unlabeled_step_end(self, to_gather: Iterable[Tuple[int, List[List[str]]]]):
