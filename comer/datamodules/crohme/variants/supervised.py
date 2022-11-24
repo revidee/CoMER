@@ -27,6 +27,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             num_workers: int = 5,
             scale_aug: bool = False,
             unlabeled_pct: float = 0.0,
+            train_sorting: int = 0,
     ) -> None:
         super().__init__()
         assert isinstance(test_year, str)
@@ -37,6 +38,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
         self.num_workers = num_workers
         self.scale_aug = scale_aug
         self.unlabeled_pct = unlabeled_pct
+        self.train_sorting = train_sorting
 
         print(f"Load data from: {self.zipfile_path}")
 
@@ -44,7 +46,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
         with ZipFile(self.zipfile_path) as archive:
             if stage == "fit" or stage is None:
                 self.train_dataset = CROHMEDataset(
-                    build_dataset(archive, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct)[0],
+                    build_dataset(archive, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct, sorting_mode=self.train_sorting)[0],
                     True,
                     self.scale_aug,
                 )

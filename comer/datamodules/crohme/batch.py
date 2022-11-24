@@ -83,13 +83,26 @@ def build_batch_split_from_entries(
         batch_imagesize: int = MAX_SIZE,
         maxlen: int = 200,
         max_imagesize: int = MAX_SIZE,
-        unlabeled_pct: float = 0
+        unlabeled_pct: float = 0,
+        sorting_mode: int = 0  # 0 = nothing, 1 = random, 2 = sorted
 ) -> Tuple[List[BatchTuple], List[BatchTuple]]:
     total_len = len(data)
 
-    random_idx_order = np.arange(total_len, dtype=int)
-    np.random.seed(torch.initial_seed())
-    np.random.shuffle(random_idx_order)
+    idx_order = np.arange(total_len, dtype=int)
+
+    if sorting_mode == 2:
+        is_pil_image = isinstance(data[0].image, Image)
+        if is_pil_image:
+            get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size[0] * x.image.size[1]
+        else:
+            get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size(1) * x.image.size(2)
+        idx_order = np.argsort(
+            np.vectorize(get_entry_image_pixels)(data)
+        )
+
+    if mode == 1:
+        np.random.seed(torch.initial_seed())
+        np.random.shuffle(idx_order)
 
     if unlabeled_pct < 0:
         unlabeled_pct = 0
@@ -101,7 +114,7 @@ def build_batch_split_from_entries(
     return (
         # labeled batches
         build_batches_from_samples(
-            data[random_idx_order[:labeled_end]],
+            data[idx_order[:labeled_end]],
             batch_size,
             batch_imagesize,
             maxlen,
@@ -110,7 +123,7 @@ def build_batch_split_from_entries(
         ),
         # unlabeled batches
         build_batches_from_samples(
-            data[random_idx_order[labeled_end:]],
+            data[idx_order[labeled_end:]],
             batch_size,
             batch_imagesize,
             maxlen,
@@ -225,6 +238,7 @@ def build_dataset(
         folder: str,
         batch_size: int,
         unlabeled_pct: float = 0,
+        sorting_mode: int = 0,  # 0 = nothing, 1 = random, 2 = sorted
 ) -> Tuple[List[BatchTuple], List[BatchTuple]]:
     return build_batch_split_from_entries(extract_data_entries(archive, folder), batch_size,
-                                          unlabeled_pct=unlabeled_pct)
+                                          unlabeled_pct=unlabeled_pct, sorting_mode=sorting_mode)
