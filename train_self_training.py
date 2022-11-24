@@ -25,7 +25,7 @@ if __name__ == '__main__':
                             auto_insert_metric_name=False
                             ),
         ],
-        precision=16
+        precision=32
     )
     dm = CROHMESelfTrainingDatamodule(
         test_year='2019',
@@ -37,10 +37,10 @@ if __name__ == '__main__':
     )
 
     model: CoMERSelfTraining = CoMERSelfTraining.load_from_checkpoint(
-        './baseline_t112.ckpt',
-        learning_rate=0.00001,
-        patience=10,
-        pseudo_labeling_threshold=0.95
+        './bench/baseline_t112.ckpt',
+        learning_rate=0.001,
+        patience=20,
+        pseudo_labeling_threshold=0.985
     )
 
     trainer.fit(model, dm)

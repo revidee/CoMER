@@ -15,8 +15,13 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
         with ZipFile(self.zipfile_path) as archive:
             if stage == "fit" or stage is None:
                 # "dynamictaset"
-                _, train_unlabeled = build_dataset(archive, self.test_year, self.eval_batch_size, unlabeled_pct=1)
-                self.train_unlabeled_ds = train_unlabeled
+                _, train_unlabeled2014 = build_dataset(archive, "2014", self.eval_batch_size, unlabeled_pct=1)
+                _, train_unlabeled2016 = build_dataset(archive, "2016", self.eval_batch_size, unlabeled_pct=1)
+                _, train_unlabeled2019 = build_dataset(archive, "2019", self.eval_batch_size, unlabeled_pct=1)
+                self.train_unlabeled_ds = train_unlabeled2014 + train_unlabeled2016 + train_unlabeled2019
+                for i, batch_tuple in enumerate(self.train_unlabeled_ds):
+                    self.train_unlabeled_ds[i] = (batch_tuple[0], batch_tuple[1], batch_tuple[2], batch_tuple[3], i)
+
                 self.trainer.unlabeled_pseudo_labels = [[[] for _ in unl_batch[0]] for unl_batch in self.train_unlabeled_ds]
 
                 # "static" datasets

@@ -76,7 +76,7 @@ def main(
         max_score = math.exp(max_score)
         min_score = math.exp(min_score)
         tot_range = max_score - min_score
-        bins = 10
+        bins = 20
         bin_width = tot_range / bins
         bin_ranges = [(max_score - (bin_width * i), max_score - (bin_width * (i + 1))) for i in range(bins)]
         MAX_ERROR_TOL = 5
