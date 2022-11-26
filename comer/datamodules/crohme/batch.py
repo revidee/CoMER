@@ -100,7 +100,7 @@ def build_batch_split_from_entries(
             np.vectorize(get_entry_image_pixels)(data)
         )
 
-    if mode == 1:
+    if sorting_mode == 1:
         np.random.seed(torch.initial_seed())
         np.random.shuffle(idx_order)
 
