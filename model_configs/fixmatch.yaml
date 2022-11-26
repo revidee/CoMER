@@ -54,6 +54,7 @@ fit:
       learning_rate: 0.08
       patience: 20
       pseudo_labeling_threshold: 0.95
+      lambda_u: 1.0
   data:
     class_path: comer.datamodules.CROHMESelfTrainingDatamodule
     init_args:

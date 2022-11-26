@@ -25,7 +25,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             train_batch_size: int = 8,
             eval_batch_size: int = 4,
             num_workers: int = 5,
-            scale_aug: bool = False,
+            train_aug: str = "weak",
             unlabeled_pct: float = 0.0,
             train_sorting: int = 0,
     ) -> None:
@@ -36,7 +36,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
         self.train_batch_size = train_batch_size
         self.eval_batch_size = eval_batch_size
         self.num_workers = num_workers
-        self.scale_aug = scale_aug
+        self.train_aug = train_aug
         self.unlabeled_pct = unlabeled_pct
         self.train_sorting = train_sorting
 
@@ -47,19 +47,16 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             if stage == "fit" or stage is None:
                 self.train_dataset = CROHMEDataset(
                     build_dataset(archive, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct, sorting_mode=self.train_sorting)[0],
-                    True,
-                    self.scale_aug,
+                    self.train_aug,
                 )
                 self.val_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
-                    False,
-                    self.scale_aug,
+                    "",
                 )
             if stage == "test" or stage is None:
                 self.test_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
-                    False,
-                    self.scale_aug,
+                    "",
                 )
 
     def train_dataloader(self):
