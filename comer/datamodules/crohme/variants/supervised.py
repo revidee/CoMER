@@ -1,20 +1,14 @@
 import os
-from typing import List, Optional
+from typing import  Optional
 from zipfile import ZipFile
 
 import pytorch_lightning as pl
 
-from comer.datamodules.crohme.batch import create_batch_from_lists
 from comer.datamodules.crohme.dataset import CROHMEDataset
 from torch.utils.data.dataloader import DataLoader
 
-from comer.datamodules.crohme import Batch, build_dataset, BatchTuple
-
-
-# Used to transform a Lighting-Batch into some other form (here, our custom Batch)
-def collate_fn(batch: List[BatchTuple]) -> Batch:
-    assert len(batch) == 1
-    return create_batch_from_lists(*(batch[0]))
+from comer.datamodules.crohme import build_dataset
+from comer.datamodules.crohme.variants.collate import collate_fn
 
 
 class CROHMESupvervisedDatamodule(pl.LightningDataModule):

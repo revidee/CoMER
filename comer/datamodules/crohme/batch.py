@@ -19,6 +19,7 @@ class Batch:
     labels: List[List[int]]  # [b, l]
     is_labeled: bool
     src_idx: int
+    unfiltered_size: int
 
     def __len__(self) -> int:
         return len(self.img_bases)
@@ -30,7 +31,8 @@ class Batch:
             mask=self.mask.to(device),
             labels=self.labels,
             is_labeled=self.is_labeled,
-            src_idx=self.src_idx
+            src_idx=self.src_idx,
+            unfiltered_size=self.unfiltered_size
         )
 
 
@@ -70,22 +72,18 @@ def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], l
         x[idx, :, : filtered_heights_x[idx], : filtered_widths_x[idx]] = img
         x_mask[idx, : filtered_heights_x[idx], : filtered_widths_x[idx]] = 0
 
-    return Batch(filtered_file_names, x, x_mask, filtered_labels_as_indices, is_labled, src_idx)
+    return Batch(filtered_file_names, x, x_mask, filtered_labels_as_indices, is_labled, src_idx, len(file_names))
 
 
 # change according to your GPU memory
 MAX_SIZE = int(32e4)
 
 
-def build_batch_split_from_entries(
+def get_splitted_indices(
         data: 'np.ndarray[Any, np.dtype[DataEntry]]',
-        batch_size: int,
-        batch_imagesize: int = MAX_SIZE,
-        maxlen: int = 200,
-        max_imagesize: int = MAX_SIZE,
         unlabeled_pct: float = 0,
         sorting_mode: int = 0  # 0 = nothing, 1 = random, 2 = sorted
-) -> Tuple[List[BatchTuple], List[BatchTuple]]:
+):
     total_len = len(data)
 
     idx_order = np.arange(total_len, dtype=int)
@@ -111,10 +109,24 @@ def build_batch_split_from_entries(
 
     labeled_end = int(total_len * (1 - unlabeled_pct))
 
+    return idx_order[:labeled_end], idx_order[labeled_end:]
+
+
+def build_batch_split_from_entries(
+        data: 'np.ndarray[Any, np.dtype[DataEntry]]',
+        batch_size: int,
+        batch_imagesize: int = MAX_SIZE,
+        maxlen: int = 200,
+        max_imagesize: int = MAX_SIZE,
+        unlabeled_pct: float = 0,
+        sorting_mode: int = 0  # 0 = nothing, 1 = random, 2 = sorted
+) -> Tuple[List[BatchTuple], List[BatchTuple]]:
+    labeled_indices, unlabeled_indices = get_splitted_indices(data, unlabeled_pct=unlabeled_pct, sorting_mode=sorting_mode)
+
     return (
         # labeled batches
         build_batches_from_samples(
-            data[idx_order[:labeled_end]],
+            data[labeled_indices],
             batch_size,
             batch_imagesize,
             maxlen,
@@ -123,7 +135,7 @@ def build_batch_split_from_entries(
         ),
         # unlabeled batches
         build_batches_from_samples(
-            data[idx_order[labeled_end:]],
+            data[unlabeled_indices],
             batch_size,
             batch_imagesize,
             maxlen,
