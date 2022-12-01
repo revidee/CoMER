@@ -2,6 +2,7 @@ from typing import List
 
 import torchvision.transforms as tr
 from torch.utils.data.dataset import Dataset
+from torchvision.transforms import ToPILImage
 
 from comer.datamodules.crohme import BatchTuple
 from comer.datamodules.utils.randaug import RandAugment
@@ -10,10 +11,10 @@ from comer.datamodules.utils.transforms import ScaleAugmentation, ScaleToLimitRa
 K_MIN = 0.7
 K_MAX = 1.4
 
-H_LO = 32
-H_HI = 512
-W_LO = 32
-W_HI = 2048
+H_LO = 16
+H_HI = 256
+W_LO = 16
+W_HI = 1024
 
 
 class CROHMEDataset(Dataset):
@@ -32,6 +33,7 @@ class CROHMEDataset(Dataset):
         if aug_mode == "weak":
             trans_list.append(ScaleAugmentation(K_MIN, K_MAX))
         elif aug_mode == "strong":
+            trans_list.append(ToPILImage())
             trans_list.append(RandAugment(3))
 
         trans_list += [

@@ -1,16 +1,16 @@
-from typing import Optional, Any
+from typing import Optional, Any, List
 from zipfile import ZipFile
 
 from torch.utils.data.dataloader import DataLoader
 
 from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme import build_dataset, extract_data_entries, get_splitted_indices, \
-    build_batches_from_samples, DataEntry
+    build_batches_from_samples, DataEntry, BatchTuple
 from comer.datamodules.crohme.dataset import CROHMEDataset
 from comer.datamodules.crohme.variants.collate import collate_fn, collate_fn_remove_unlabeled
 
 
-class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
+class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
     def setup(self, stage: Optional[str] = None) -> None:
         with ZipFile(self.zipfile_path) as archive:
             if stage == "fit" or stage is None:
@@ -47,7 +47,7 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
                 # train_batch_size, since the losses for both are averaged together
                 # Like FixMatch, we increase the batch-size by the factor
                 unlabeled_factor = (1 / (1 - self.unlabeled_pct)) - 1
-                unlabeled_batch_size = self.train_batch_size * unlabeled_factor
+                unlabeled_batch_size = int(self.train_batch_size * unlabeled_factor)
                 if unlabeled_batch_size < 1:
                     unlabeled_batch_size = 1
 
@@ -74,7 +74,7 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
                     "",
                 )
 
-    def add_labels_to_batches(self, batches: list[tuple[list[str], list[ndarray], list[list[str]], bool, int]]):
+    def add_labels_to_batches(self, batches: List[BatchTuple]):
         if self.trainer is None or self.trainer.unlabeled_pseudo_labels is None:
             return batches
         for idx, src_batch in enumerate(batches):
@@ -85,19 +85,40 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
         return batches
 
     def get_unlabeled_for_train(self):
-        return self.add_labels_to_batches(self.pseudo_labeled_batches)
+        self.add_labels_to_batches(self.pseudo_labeled_batches)
+        filtered_batches = []
+        total_labeled = 0
+        for idx, src_batch in enumerate(self.pseudo_labeled_batches):
+            src_batch[2].clear()
+            src_batch[2].extend(
+                [self.trainer.unlabeled_pseudo_labels[fname] for fname in src_batch[0]]
+            )
+            for single_item_label in src_batch[2]:
+                if len(single_item_label) > 0:
+                    total_labeled += 1
+            for single_item_label in src_batch[2]:
+                if len(single_item_label) > 0:
+                    filtered_batches.append(src_batch)
+                    break
+        return filtered_batches
 
     def get_unlabeled_for_pseudo_labeling(self):
         return self.add_labels_to_batches(self.pseudo_labeling_batches)
 
     def train_dataloader(self):
+        unlabeled_with_pseudos = self.get_unlabeled_for_train()
+        labeled = DataLoader(
+            self.train_labeled_dataset,
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=collate_fn,
+        )
+        if len(unlabeled_with_pseudos) == 0:
+            return {
+                "labeled": labeled
+            }
         return {
-            "labeled": DataLoader(
-                self.train_labeled_dataset,
-                shuffle=True,
-                num_workers=self.num_workers,
-                collate_fn=collate_fn,
-            ),
+            "labeled": labeled,
             "unlabeled": DataLoader(
                 CROHMEDataset(
                     self.get_unlabeled_for_train(),

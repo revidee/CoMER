@@ -55,7 +55,7 @@ def Rotate(img, v):  # [-30, 30]
     assert -30 <= v <= 30
     if random.random() > 0.5:
         v = -v
-    return img.rotate(v)
+    return img.rotate(v, expand=1)
 
 
 def AutoContrast(img, _):
