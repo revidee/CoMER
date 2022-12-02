@@ -56,6 +56,25 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     def validation_step(self, batch: Batch, batch_idx, dataloader_idx):
+        if self.current_epoch <= self.trainer.check_val_every_n_epoch:
+            self.log(
+                "val_loss",
+                0,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True,
+                sync_dist=True,
+                batch_size=batch.imgs.shape[0]
+            )
+            self.log(
+                "val_ExpRate",
+                0,
+                prog_bar=True,
+                on_step=False,
+                on_epoch=True,
+                batch_size=batch.imgs.shape[0]
+            )
+            return 0
         return super().validation_step(batch, batch_idx)
 
     def unlabeled_full(self, data_fetcher: AbstractDataFetcher,
