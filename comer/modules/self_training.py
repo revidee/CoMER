@@ -57,24 +57,26 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
 
     def validation_step(self, batch: Batch, batch_idx, dataloader_idx):
         if self.current_epoch <= self.trainer.check_val_every_n_epoch:
+            fake_loss = torch.tensor(0.0, device=self.device)
             self.log(
                 "val_loss",
-                0.0,
+                fake_loss,
                 on_step=False,
                 on_epoch=True,
                 prog_bar=True,
                 sync_dist=True,
                 batch_size=batch.imgs.shape[0]
             )
+            self.exprate_recorder([[0]], [[1]])
             self.log(
                 "val_ExpRate",
-                0.0,
+                self.exprate_recorder,
                 prog_bar=True,
                 on_step=False,
                 on_epoch=True,
                 batch_size=batch.imgs.shape[0]
             )
-            return 0
+            return fake_loss
         return super().validation_step(batch, batch_idx)
 
     def unlabeled_full(self, data_fetcher: AbstractDataFetcher,
