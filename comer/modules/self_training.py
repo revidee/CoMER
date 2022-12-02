@@ -59,7 +59,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
         if self.current_epoch <= self.trainer.check_val_every_n_epoch:
             self.log(
                 "val_loss",
-                0,
+                0.0,
                 on_step=False,
                 on_epoch=True,
                 prog_bar=True,
@@ -68,7 +68,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
             )
             self.log(
                 "val_ExpRate",
-                0,
+                0.0,
                 prog_bar=True,
                 on_step=False,
                 on_epoch=True,
