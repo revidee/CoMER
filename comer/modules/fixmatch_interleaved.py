@@ -21,8 +21,7 @@ class CoMERFixMatchInterleaved(CoMERFixMatch):
             unlabeled_idx = torch.cat((unlabeled_idx, unlabeled_idx + batch_size), dim=0)
 
             # labeled loss, averaged to the full batch_size
-            labeled_avg_fac = (batch.unlabeled_start / batch_size)
-            loss = ce_loss(out_hat[labeled_idx], out[labeled_idx]) * labeled_avg_fac
+            loss = ce_loss(out_hat[labeled_idx], out[labeled_idx])
             # + unlabeled loss, normalized by the "mask rate" of the unlabeled data
             # (i.e. % of successfully pseudo-labeled unlabeled samples)
             unlabeled_norm_fac = 1.0
@@ -31,7 +30,7 @@ class CoMERFixMatchInterleaved(CoMERFixMatch):
             else:
                 print("WARN: unlabeled norm factor was unset, but is expected to be set before the training begins.")
             loss += ce_loss(out_hat[unlabeled_idx], out[unlabeled_idx]) \
-                        * self.hparams.lambda_u * unlabeled_norm_fac * (1 - labeled_avg_fac)
+                        * self.hparams.lambda_u * unlabeled_norm_fac
         else:
             loss = ce_loss(out_hat, out)
 
