@@ -28,19 +28,19 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
                     build_batches_from_samples(
                         labeled_data,
                         self.train_batch_size,
-                        is_labled=True,
                         batch_imagesize=int(10e10),
                         max_imagesize=int(10e10)
                     ),
                     "weak",
+                    "weak"
                 )
 
                 # unlabeled train-split, used in the "pseudo-labeling" step
                 # this uses the same batch size as the eval step, since inference requires more VRAM
+                # (due to beam-search)
                 self.pseudo_labeling_batches = build_batches_from_samples(
                     unlabeled_data,
                     self.eval_batch_size,
-                    is_labled=True
                 )
 
                 # unlabeled train-split, used in the train-step. This uses a larger batch_size than the usual
@@ -56,7 +56,6 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
                     unlabeled_batch_size,
                     batch_imagesize=int(10e10),
                     max_imagesize=int(10e10),
-                    is_labled=False
                 )
 
                 # initialize the pseudo-labels with empty labels
@@ -122,6 +121,7 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
             "unlabeled": DataLoader(
                 CROHMEDataset(
                     unlabeled_with_pseudos,
+                    "strong",
                     "strong"
                 ),
                 shuffle=True,
@@ -138,7 +138,8 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
             collate_fn=collate_fn,
         ), DataLoader(
             CROHMEDataset(
-                self.get_unlabeled_for_pseudo_labeling(),
+                self.pseudo_labeling_batches,
+                "weak",
                 "weak",
             ),
             shuffle=False,

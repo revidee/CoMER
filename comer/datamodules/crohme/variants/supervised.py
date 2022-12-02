@@ -42,14 +42,17 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
                 self.train_dataset = CROHMEDataset(
                     build_dataset(archive, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct, sorting_mode=self.train_sorting)[0],
                     self.train_aug,
+                    self.train_aug,
                 )
                 self.val_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
+                    "",
                     "",
                 )
             if stage == "test" or stage is None:
                 self.test_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
+                    "",
                     "",
                 )
 

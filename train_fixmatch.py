@@ -1,11 +1,13 @@
 from pytorch_lightning import seed_everything
 
 from comer.datamodules.crohme.variants.fixmatch import CROHMEFixMatchDatamodule
+from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from comer.datamodules import CROHMESelfTrainingDatamodule
 from comer.modules import CoMERSelfTraining
 from comer.modules.fixmatch import CoMERFixMatch
+from comer.modules.fixmatch_interleaved import CoMERFixMatchInterleaved
 
 if __name__ == '__main__':
     seed_everything(7)
@@ -30,7 +32,7 @@ if __name__ == '__main__':
         ],
         precision=32
     )
-    dm = CROHMEFixMatchDatamodule(
+    dm = CROHMEFixMatchInterleavedDatamodule(
         test_year='2019',
         eval_batch_size=4,
         zipfile_path='data.zip',
@@ -40,7 +42,7 @@ if __name__ == '__main__':
         train_sorting=1,
     )
 
-    model: CoMERFixMatch = CoMERFixMatch.load_from_checkpoint(
+    model: CoMERFixMatch = CoMERFixMatchInterleaved.load_from_checkpoint(
         './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt',
         learning_rate=0.001,
         patience=20,

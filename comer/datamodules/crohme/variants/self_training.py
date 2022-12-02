@@ -28,14 +28,17 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
                 self.train_labeled_dataset = CROHMEDataset(
                     build_dataset(archive, "train", self.train_batch_size)[0],
                     self.train_aug,
+                    self.train_aug,
                 )
                 self.val_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
+                    "",
                     "",
                 )
             if stage == "test" or stage is None:
                 self.test_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
+                    "",
                     "",
                 )
 
@@ -89,6 +92,7 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
         ), DataLoader(
             CROHMEDataset(
                 self.all_unlabeled_with_potential_pseudos(),
+                "",
                 "",
             ),
             shuffle=False,

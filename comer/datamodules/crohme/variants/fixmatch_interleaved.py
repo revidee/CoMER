@@ -1,12 +1,13 @@
-from typing import Optional, Any, List
+from typing import Optional, Any
 from zipfile import ZipFile
 
+import numpy as np
 from torch.utils.data.dataloader import DataLoader
 
 from comer.datamodules.crohme import build_dataset, extract_data_entries, get_splitted_indices, \
-    build_batches_from_samples, DataEntry, BatchTuple
+    build_batches_from_samples, DataEntry, build_interleaved_batches_from_samples
 from comer.datamodules.crohme.dataset import CROHMEDataset
-from comer.datamodules.crohme.variants.collate import collate_fn, collate_fn_remove_unlabeled
+from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.datamodules.crohme.variants.fixmatch import CROHMEFixMatchDatamodule
 
 
@@ -22,61 +23,64 @@ class CROHMEFixMatchInterleavedDatamodule(CROHMEFixMatchDatamodule):
                     unlabeled_pct=self.unlabeled_pct,
                     sorting_mode=self.train_sorting
                 )
-                labeled_data, unlabeled_data = full_train_data[labeled_indices], full_train_data[unlabeled_indices]
-                # labeled train-split
-                self.train_labeled_dataset = CROHMEDataset(
-                    build_batches_from_samples(
-                        labeled_data,
-                        self.train_batch_size,
-                        is_labled=True,
-                        batch_imagesize=int(10e10),
-                        max_imagesize=int(10e10)
-                    ),
-                    "weak",
-                )
+                self.labeled_data, self.unlabeled_data = full_train_data[labeled_indices], full_train_data[
+                    unlabeled_indices]
 
                 # unlabeled train-split, used in the "pseudo-labeling" step
                 # this uses the same batch size as the eval step, since inference requires more VRAM
+                # (due to beam-search)
                 self.pseudo_labeling_batches = build_batches_from_samples(
-                    unlabeled_data,
-                    self.eval_batch_size,
-                    is_labled=True
+                    self.unlabeled_data,
+                    self.eval_batch_size
                 )
 
-                self.pseudo_labeled_batches = build_batches_from_samples(
-                    unlabeled_data,
-                    self.train_batch_size,
-                    batch_imagesize=int(10e10),
-                    max_imagesize=int(10e10),
-                    is_labled=False
-                )
+                self.unlabeled_factor = (1 / (1 - self.unlabeled_pct)) - 1
 
                 # initialize the pseudo-labels with empty labels
                 self.trainer.unlabeled_pseudo_labels = {}
-                for entry in unlabeled_data:
+                for entry in self.unlabeled_data:
                     self.trainer.unlabeled_pseudo_labels[entry.file_name] = []
 
                 self.val_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
+                    "",
                     "",
                 )
             if stage == "test" or stage is None:
                 self.test_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
                     "",
+                    "",
                 )
+    def get_interleaved_train_batches(self):
+        filtered_unlabeled_entries = []
+        total_labeled = 0
+        for data_entry in self.unlabeled_data:
+            # add label from gpu-shared labeling cache
+            data_entry.label = self.trainer.unlabeled_pseudo_labels[data_entry.file_name]
+            # if it has a valid label, add it to the "filtered" data-set
+            if len(data_entry.label) > 0:
+                filtered_unlabeled_entries.append(data_entry)
+                total_labeled += 1
+
+        self.trainer.unlabeled_norm_factor = total_labeled / len(self.unlabeled_data)
+
+        # interleave labeled/unlabeled data evenly
+        return build_interleaved_batches_from_samples(
+            self.labeled_data,
+            np.array(filtered_unlabeled_entries),
+            self.train_batch_size
+        )
 
     def train_dataloader(self):
-        unlabeled_with_pseudos = self.get_unlabeled_for_train()
-        if len(unlabeled_with_pseudos) == 0:
-            return DataLoader(
-                self.train_labeled_dataset,
-                shuffle=True,
-                num_workers=self.num_workers,
-                collate_fn=collate_fn,
-            )
-        # Interleave unlabeled / labeled batches
-        factor = (1 / (1 - self.unlabeled_pct)) - 1
-
-        # TODO: interleave based on the factor
+        return DataLoader(
+            CROHMEDataset(
+                self.get_interleaved_train_batches(),
+                "weak",
+                "strong"
+            ),
+            shuffle=True,
+            num_workers=self.num_workers,
+            collate_fn=collate_fn,
+        )
 

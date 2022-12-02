@@ -44,7 +44,6 @@ def main(batch_size: int = 2, seeds: List[int] = None, gpu: int = 1,
                 batch_size,
                 batch_imagesize=(2200 * 250 * 4),
                 max_imagesize=(2200 * 250),
-                is_labled=True,
                 include_last_only_full=True
             )
 

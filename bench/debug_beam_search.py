@@ -40,7 +40,7 @@ def main(gpu: int = 1):
                 4,
                 batch_imagesize=(2200 * 250 * 4),
                 max_imagesize=(2200 * 250),
-                is_labled=True,
+                is_labeled=True,
                 include_last_only_full=True
             )[::-1]
 

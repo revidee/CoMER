@@ -1,3 +1,4 @@
+import math
 from dataclasses import dataclass
 from typing import List, Tuple, Callable, Any
 from zipfile import ZipFile
@@ -17,7 +18,7 @@ class Batch:
     imgs: FloatTensor  # [b, 1, H, W]
     mask: LongTensor  # [b, H, W]
     labels: List[List[int]]  # [b, l]
-    is_labeled: bool
+    unlabeled_start: int
     src_idx: int
     unfiltered_size: int
 
@@ -30,15 +31,15 @@ class Batch:
             imgs=self.imgs.to(device),
             mask=self.mask.to(device),
             labels=self.labels,
-            is_labeled=self.is_labeled,
+            unlabeled_start=self.unlabeled_start,
             src_idx=self.src_idx,
             unfiltered_size=self.unfiltered_size
         )
 
 
 # A BatchTuple represents a single batch which contains 3 lists of equal length (batch-len)
-# [file_names, images, labels, is_labeled]
-BatchTuple = Tuple[List[str], List['np.ndarray'], List[List[str]], bool, int]
+# [file_names, images, labels, unlabeled_start, src_idx]
+BatchTuple = Tuple[List[str], List['np.ndarray'], List[List[str]], int, int]
 
 
 # Creates a Batch of (potentially) annotated images which pads & masks the images, s.t. they fit into a single tensor.
@@ -128,30 +129,26 @@ def build_batch_split_from_entries(
         build_batches_from_samples(
             data[labeled_indices],
             batch_size,
-            batch_imagesize,
-            maxlen,
-            max_imagesize,
-            is_labled=True
+            batch_imagesize=batch_imagesize,
+            max_imagesize=max_imagesize,
+            maxlen=maxlen
         ),
         # unlabeled batches
         build_batches_from_samples(
             data[unlabeled_indices],
             batch_size,
-            batch_imagesize,
-            maxlen,
-            max_imagesize,
-            is_labled=False
+            batch_imagesize=batch_imagesize,
+            max_imagesize=max_imagesize,
+            maxlen=maxlen
         ),
     )
-
 
 def build_batches_from_samples(
         data: 'np.ndarray[Any, np.dtype[DataEntry]]',
         batch_size: int,
         batch_imagesize: int = MAX_SIZE,
-        maxlen: int = 200,
         max_imagesize: int = MAX_SIZE,
-        is_labled: bool = True,
+        maxlen: int = 200,
         include_last_only_full: bool = False
 ) -> List[BatchTuple]:
     if data.shape[0] == 0:
@@ -163,7 +160,7 @@ def build_batches_from_samples(
     total_fname_batches: List[List[str]] = []
     total_feature_batches: List[List['np.ndarray']] = []
     total_label_batches: 'List[List[List[str]]]' = []
-    total_is_label_batches: List[bool] = []
+    total_unlabeled_start_batches: List[int] = []
 
     biggest_image_size = 0
     is_pil_image = isinstance(data[0].image, Image)
@@ -207,7 +204,7 @@ def build_batches_from_samples(
                 total_fname_batches.append(next_batch_file_names)
                 total_feature_batches.append(next_batch_images)
                 total_label_batches.append(next_batch_labels)
-                total_is_label_batches.append(is_labled)
+                total_unlabeled_start_batches.append(len(next_batch_file_names))
                 # reset current batch
                 i = 0
                 biggest_image_size = size
@@ -217,10 +214,7 @@ def build_batches_from_samples(
             # add the entry to the current batch
             next_batch_file_names.append(entry.file_name)
             next_batch_images.append(image_arr)
-            if is_labled:
-                next_batch_labels.append(entry.label)
-            else:
-                next_batch_labels.append([])
+            next_batch_labels.append(entry.label)
             i += 1
 
     # add last batch if it isn't empty
@@ -228,9 +222,9 @@ def build_batches_from_samples(
         total_fname_batches.append(next_batch_file_names)
         total_feature_batches.append(next_batch_images)
         total_label_batches.append(next_batch_labels)
-        total_is_label_batches.append(is_labled)
+        total_unlabeled_start_batches.append(len(next_batch_file_names))
 
-    print(len(total_feature_batches), f"batches loaded (labled: {is_labled})")
+    print(len(total_feature_batches), f"batches loaded")
     return list(
         # Zips batches into a 4-Tuple Tuple[ List[str] , List[np.ndarray], List[List[str]], bool ]
         #                        Per batch:  file_names, images          , labels           is_labeled
@@ -238,12 +232,83 @@ def build_batches_from_samples(
             total_fname_batches,
             total_feature_batches,
             total_label_batches,
-            total_is_label_batches,
-            list(range(len(total_is_label_batches)))
+            total_unlabeled_start_batches,
+            list(range(len(total_unlabeled_start_batches)))
         )
     )
 
+def sort_data_entries_by_size(data: 'np.ndarray[Any, np.dtype[DataEntry]]'):
+    if data.shape[0] == 0:
+        return data
+    is_pil_image = isinstance(data[0].image, Image)
+    if is_pil_image:
+        get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size[0] * x.image.size[1]
+    else:
+        get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size(1) * x.image.size(2)
 
+    # Sort the data entries via numpy by total pixel count and use the sorted indices to create a sorted array-view.
+    return data[
+        np.argsort(
+            np.vectorize(get_entry_image_pixels)(data)
+        )
+    ]
+
+
+def build_interleaved_batches_from_samples(
+        labeled: 'np.ndarray[Any, np.dtype[DataEntry]]',
+        unlabeled: 'np.ndarray[Any, np.dtype[DataEntry]]',
+        batch_size: int,
+) -> List[BatchTuple]:
+    labeled_len = labeled.shape[0]
+    unlabeled_len = unlabeled.shape[0]
+    total = labeled_len + unlabeled_len
+    if total == 0:
+        return list()
+    is_pil_image = isinstance(labeled[0].image, Image)
+
+    # Sort the data entries via numpy by total pixel count and use the sorted indices to create a sorted array-view.
+    labeled_sorted = sort_data_entries_by_size(labeled)
+    unlabeled_sorted = sort_data_entries_by_size(unlabeled)
+
+    needed_batches = math.ceil(total / batch_size)
+
+    unlabeled_per_batch = math.ceil(unlabeled_len / needed_batches)
+
+    batches: List[BatchTuple] = []
+    unlabeled_idx = 0
+    labeled_idx = 0
+    for i in range(needed_batches):
+        unlabeled_end_idx = min(unlabeled_idx + unlabeled_per_batch, unlabeled_len)
+        unlabeled_in_batch_len = unlabeled_end_idx - unlabeled_idx
+
+        labeled_end_idx = min(labeled_idx + batch_size - unlabeled_in_batch_len, labeled_len)
+        labeled_in_batch_len = labeled_end_idx - labeled_idx
+
+        assert (unlabeled_in_batch_len + labeled_in_batch_len) > 0
+
+        batch_entries: List[DataEntry] = labeled_sorted[labeled_idx:labeled_end_idx].tolist() + (
+            [] if unlabeled_in_batch_len == 0 else unlabeled_sorted[unlabeled_idx:unlabeled_end_idx].tolist()
+        )
+
+        splitted_entries: List[Tuple[str, 'np.ndarray', List[str]]] = [
+                        (
+                            entry.file_name,
+                            np.array(entry.image) if is_pil_image else entry.image,
+                            entry.label
+                        ) for entry in batch_entries
+                    ]
+        partial_entries: Tuple[List[str], List['np.ndarray'], List[List[str]]] = list(zip(*splitted_entries))
+        batches.append((
+            partial_entries[0],
+            partial_entries[1],
+            partial_entries[2],
+            labeled_in_batch_len,
+            i
+        ))
+
+        unlabeled_idx = unlabeled_end_idx
+        labeled_idx = labeled_end_idx
+    return batches
 
 def build_dataset(
         archive: ZipFile,

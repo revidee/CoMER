@@ -17,6 +17,20 @@ W_LO = 16
 W_HI = 1024
 
 
+def build_aug_transform(aug_mode: str):
+    trans_list = []
+    if aug_mode == "weak":
+        trans_list.append(ScaleAugmentation(K_MIN, K_MAX))
+    elif aug_mode == "strong":
+        trans_list.append(ToPILImage())
+        trans_list.append(RandAugment(3))
+
+    trans_list += [
+        ScaleToLimitRange(w_lo=W_LO, w_hi=W_HI, h_lo=H_LO, h_hi=H_HI),
+        tr.ToTensor(),
+    ]
+    return tr.Compose(trans_list)
+
 class CROHMEDataset(Dataset):
     f"""
     Applies augmentations for all images inside a batch, just before it is used for training/validation/testing.
@@ -25,30 +39,22 @@ class CROHMEDataset(Dataset):
     """
     ds: List[BatchTuple]
 
-    def __init__(self, ds: List[BatchTuple], aug_mode: str) -> None:
+    def __init__(self, ds: List[BatchTuple], aug_mode_labeled: str, aug_mode_unlabeled: str = "strong") -> None:
         super().__init__()
         self.ds = ds
 
-        trans_list = []
-        if aug_mode == "weak":
-            trans_list.append(ScaleAugmentation(K_MIN, K_MAX))
-        elif aug_mode == "strong":
-            trans_list.append(ToPILImage())
-            trans_list.append(RandAugment(3))
-
-        trans_list += [
-            ScaleToLimitRange(w_lo=W_LO, w_hi=W_HI, h_lo=H_LO, h_hi=H_HI),
-            tr.ToTensor(),
-        ]
-
-        self.transform = tr.Compose(trans_list)
+        self.transform_labeled = build_aug_transform(aug_mode_labeled)
+        self.transform_unlabeled = build_aug_transform(aug_mode_unlabeled)
 
     def __getitem__(self, idx):
-        file_names, images, labels, is_labled, src_idx = self.ds[idx]
+        file_names, images, labels, unlabeled_start, src_idx = self.ds[idx]
 
-        images = [self.transform(im) for im in images]
+        images = [
+            self.transform_labeled(im) if i < unlabeled_start
+            else self.transform_unlabeled(im) for (i, im) in enumerate(images)
+        ]
 
-        return file_names, images, labels, is_labled, src_idx
+        return file_names, images, labels, unlabeled_start, src_idx
 
     def __len__(self):
         return len(self.ds)
