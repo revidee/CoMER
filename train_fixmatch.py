@@ -40,6 +40,7 @@ if __name__ == '__main__':
         num_workers=5,
         unlabeled_pct=0.65,
         train_sorting=1,
+        unlabeled_strong_aug="strong_mod"
     )
 
     model: CoMERFixMatch = CoMERFixMatchInterleaved.load_from_checkpoint(

@@ -6,6 +6,7 @@ from torchvision.transforms import ToPILImage
 
 from comer.datamodules.crohme import BatchTuple
 from comer.datamodules.utils.randaug import RandAugment
+from comer.datamodules.utils.randaug_variants import fixmatch_modified
 from comer.datamodules.utils.transforms import ScaleAugmentation, ScaleToLimitRange
 
 K_MIN = 0.7
@@ -24,6 +25,9 @@ def build_aug_transform(aug_mode: str):
     elif aug_mode == "strong":
         trans_list.append(ToPILImage())
         trans_list.append(RandAugment(3))
+    elif aug_mode == "strong_mod":
+        trans_list.append(ToPILImage())
+        trans_list.append(RandAugment(3, augments=fixmatch_modified()))
 
     trans_list += [
         ScaleToLimitRange(w_lo=W_LO, w_hi=W_HI, h_lo=H_LO, h_hi=H_HI),

@@ -56,7 +56,7 @@ fit:
       pseudo_labeling_threshold: 0.985
       lambda_u: 1.0
   data:
-    class_path: comer.datamodules.CROHMESelfTrainingDatamodule
+    class_path: comer.datamodules.CROHMEFixMatch
     init_args:
       zipfile_path: data.zip
       test_year: "2019"
@@ -65,3 +65,4 @@ fit:
       num_workers: 5
       train_aug: weak
       unlabeled_pct: 0.5
+      unlabeled_strong_aug: strong

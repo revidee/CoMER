@@ -11,6 +11,11 @@ from comer.datamodules.crohme.variants.collate import collate_fn, collate_fn_rem
 
 
 class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
+
+    def __init__(self, unlabeled_strong_aug: str = "strong", **kwargs):
+        super().__init__(**kwargs)
+        self.unlabeled_strong_augmentation = unlabeled_strong_aug
+
     def setup(self, stage: Optional[str] = None) -> None:
         with ZipFile(self.zipfile_path) as archive:
             if stage == "fit" or stage is None:
@@ -121,8 +126,8 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
             "unlabeled": DataLoader(
                 CROHMEDataset(
                     unlabeled_with_pseudos,
-                    "strong",
-                    "strong"
+                    self.unlabeled_strong_augmentation,
+                    self.unlabeled_strong_augmentation
                 ),
                 shuffle=True,
                 num_workers=self.num_workers,

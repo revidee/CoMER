@@ -77,7 +77,7 @@ class CROHMEFixMatchInterleavedDatamodule(CROHMEFixMatchDatamodule):
             CROHMEDataset(
                 self.get_interleaved_train_batches(),
                 "weak",
-                "strong"
+                self.unlabeled_strong_augmentation
             ),
             shuffle=True,
             num_workers=self.num_workers,
