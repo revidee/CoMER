@@ -1,4 +1,9 @@
+import random
 
+import PIL, PIL.ImageOps, PIL.ImageEnhance, PIL.ImageDraw
+import numpy as np
+import torch
+from PIL import Image
 def ShearX(img, v):  # [-0.3, 0.3]
     assert -0.3 <= v <= 0.3
     if random.random() > 0.5:
