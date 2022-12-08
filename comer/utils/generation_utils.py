@@ -422,10 +422,11 @@ class DecodeModel(pl.LightningModule):
             max_len,
             bi_dir,
             temperature=temperature,
-            find_top_k=beam_size,
+            find_top_k=beam_size * 2,
             debug=debug
         )
-        hyps_l2r, scores_l2r, repeats_l2r, hyps_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
+        hyps_l2r, history_l2r, scores_l2r, repeats_l2r, \
+            hyps_r2l, history_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
 
         hyps_l2r_len = len(hyps_l2r)
         hyps_rl2_len = len(hyps_r2l)
@@ -511,11 +512,13 @@ class DecodeModel(pl.LightningModule):
             if curr_best_idx != -1:
                 if curr_best_idx_from_l2r:
                     output_hyps.append(
-                        Hypothesis(hyps_l2r[curr_best_idx], scores_l2r[curr_best_idx], "l2r")
+                        Hypothesis(hyps_l2r[curr_best_idx], scores_l2r[curr_best_idx],
+                                   "l2r", history=history_l2r[curr_best_idx], was_l2r=True)
                     )
                 else:
                     output_hyps.append(
-                        Hypothesis(hyps_r2l[curr_best_idx], scores_r2l[curr_best_idx], "l2r")
+                        Hypothesis(hyps_r2l[curr_best_idx], scores_r2l[curr_best_idx],
+                                   "l2r", history=history_r2l[curr_best_idx], was_l2r=False)
                     )
             else:
                 output_hyps.append(Hypothesis(torch.empty(0, device=self.device, dtype=torch.long), float('-Inf'), "l2r"))

@@ -67,7 +67,7 @@ class BatchedBeamSearch:
         self.next_src: Union[None, Tensor] = None
         self.next_src_mask: Union[None, Tensor] = None
         self.next_input_ids: Union[None, Tensor] = None
-        self.next_summed_logs: Union[None, Tensor] = None
+        self.next_summed_logs_history: Union[None, Tensor] = None
         self.next_bm_refs: Union[None, List[int]] = None
         self.next_bm_active_beams: Union[None, LongTensor] = None
         self.next_invalid_token_mask: Union[None, Tensor] = None
@@ -90,7 +90,8 @@ class BatchedBeamSearch:
         self.next_src = None
         self.next_src_mask = None
         self.next_input_ids = None
-        self.next_summed_logs = None
+        self.next_summed_logs_history = None
+        self.next_summed_logs_history = None
         self.next_bm_refs = None
         self.next_bm_active_beams = None
         self.next_invalid_token_mask = None
@@ -202,9 +203,12 @@ class BatchedBeamSearch:
             )
 
             # Calc the total summed logits for all possible next beams.
-            topk_slogs_per_active_beam = topk_wlogs_per_active_beam + self.next_summed_logs.unsqueeze(-1).expand(
-                (-1, self.mc)
-            )
+            topk_slogs_per_active_beam = topk_wlogs_per_active_beam
+
+            if self.next_summed_logs_history.size(1) != 0:
+                topk_slogs_per_active_beam += self.next_summed_logs_history[:, -1].unsqueeze(-1).expand(
+                    (-1, self.mc)
+                )
 
             #####
             # Global Threshold pruning
@@ -304,17 +308,34 @@ class BatchedBeamSearch:
                     topk_vocab_idx_per_active_beam[
                         # row = the global active beam index
                         originating_active_beam_global,
-                        # cols = what is the next token
+                            # cols = what is the next token
                         flattened_padded_per_bm_indices % self.mc
                     ].unsqueeze(-1)
                 ),
                 dim=2
             )
 
+            next_beam_summed_logits = next_beam_summed_logits.unsqueeze(-1)
+            # print("----")
+            if self.next_summed_logs_history.size(1) == 0:
+                next_beam_summed_logits_history = next_beam_summed_logits
+            else:
+                next_beam_summed_logits_history = torch.cat(
+                    (
+                        self.next_summed_logs_history[originating_active_beam_global],
+                        next_beam_summed_logits
+                    ),
+                    dim=-1
+                )
+
+                # print(self.next_summed_logs_history[originating_active_beam_global])
+            # print(next_beam_summed_logits)
+            # print("----")
+
             # Update the cache of each beam manager, finish off hyps, check if done, gather the next active beams.
             for i, bm_ref in enumerate(self.next_bm_refs):
                 beam_managers[bm_ref].update(
-                    next_beam_summed_logits[i],
+                    next_beam_summed_logits_history[i],
                     next_sequences[i]
                 )
 
@@ -322,12 +343,15 @@ class BatchedBeamSearch:
         # Gather all hypothesis per beam manager and save it at the correct location
         #   (corresponding src index and correct l2r / r2l split)
         hyps_l2r: List[List[LongTensor]] = [[] for _ in itertools.repeat(None, batch_size)]
+        history_l2r: List[List[LongTensor]] = [[] for _ in itertools.repeat(None, batch_size)]
         scores_l2r: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
-        hyps_r2l = [[]]
-        scores_r2l = [[]]
+        hyps_r2l: List[List[LongTensor]] = [[]]
+        history_r2l: List[List[LongTensor]] = [[]]
+        scores_r2l: List[List[Tensor]] = [[]]
         if self.bi_dir:
-            hyps_r2l: List[List[LongTensor]] = [[] for _ in itertools.repeat(None, batch_size)]
-            scores_r2l: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
+            hyps_r2l = [[] for _ in itertools.repeat(None, batch_size)]
+            history_r2l = [[] for _ in itertools.repeat(None, batch_size)]
+            scores_r2l = [[] for _ in itertools.repeat(None, batch_size)]
 
         repeats_l2r = torch.zeros((src.shape[0],), dtype=torch.int, device=self.device)
         repeats_r2l = torch.zeros((src.shape[0],), dtype=torch.int, device=self.device)
@@ -335,21 +359,25 @@ class BatchedBeamSearch:
             best_hyps = bm.get_best_l2r_finalized()
             if bm.is_direction_l2r:
                 repeats_l2r[bm.src_idx] += len(best_hyps)
-                for (score, seq) in best_hyps:
+                for (score, seq, history) in best_hyps:
                     hyps_l2r[bm.src_idx].append(seq)
+                    history_l2r[bm.src_idx].append(history)
                     scores_l2r[bm.src_idx].append(score.unsqueeze(0))
             else:
                 repeats_r2l[bm.src_idx] += len(best_hyps)
-                for (score, seq) in best_hyps:
+                for (score, seq, history) in best_hyps:
                     hyps_r2l[bm.src_idx].append(seq)
+                    history_r2l[bm.src_idx].append(history)
                     scores_r2l[bm.src_idx].append(score.unsqueeze(0))
         # flatten to a single list containing all hyps
         flattened_scores_l2r = list(itertools.chain.from_iterable(scores_l2r))
         flattened_scores_r2l = list(itertools.chain.from_iterable(scores_r2l))
         return list(itertools.chain.from_iterable(hyps_l2r)), \
+            list(itertools.chain.from_iterable(history_l2r)), \
             torch.cat(flattened_scores_l2r, dim=0) if len(flattened_scores_l2r) > 0 else self.empty_tensor, \
             repeats_l2r, \
             list(itertools.chain.from_iterable(hyps_r2l)), \
+            list(itertools.chain.from_iterable(history_r2l)), \
             torch.cat(flattened_scores_r2l, dim=0) if len(flattened_scores_r2l) > 0 else self.empty_tensor, \
             repeats_r2l
 
@@ -460,7 +488,7 @@ class BatchedBeamSearch:
             ),
             dim=0
         )
-        self.next_summed_logs = torch.cat(
+        self.next_summed_logs_history = torch.cat(
             list(
                 itertools.chain(
                     itertools.chain.from_iterable(current_sum_logits_l2r),
@@ -480,8 +508,8 @@ class BatchedBeamSearch:
             ))
 
             self.next_bm_active_beams = list(itertools.chain(
-                    itertools.chain.from_iterable(bm_active_beams_l2r), itertools.chain.from_iterable(bm_active_beams_r2l)
-                )
+                itertools.chain.from_iterable(bm_active_beams_l2r), itertools.chain.from_iterable(bm_active_beams_r2l)
+            )
             )
 
             if not empty_l2r:

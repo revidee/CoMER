@@ -4,19 +4,23 @@ import torch
 import torch.nn.functional as F
 from comer.datamodules.crohme import vocab
 from einops import rearrange
-from torch import LongTensor
+from torch import LongTensor, FloatTensor
 from torchmetrics import Metric
 
 
 class Hypothesis:
     seq: List[int]
     score: float
+    history: List[float]
+    was_l2r: bool
 
     def __init__(
-        self,
-        seq_tensor: LongTensor,
-        score: float,
-        direction: str,
+            self,
+            seq_tensor: LongTensor,
+            score: float,
+            direction: str,
+            history: Union[FloatTensor, None] = None,
+            was_l2r: bool = False
     ) -> None:
         assert direction in {"l2r", "r2l"}
         raw_seq = seq_tensor.tolist()
@@ -28,6 +32,13 @@ class Hypothesis:
 
         self.seq = result
         self.score = score
+
+        self.was_l2r = was_l2r
+
+        if history is not None:
+            self.history = history.tolist()
+        else:
+            self.history = []
 
     def __len__(self):
         if len(self.seq) != 0:
@@ -41,6 +52,7 @@ class Hypothesis:
 
 class ExpRateRecorder(Metric):
     full_state_update = False
+
     def __init__(self, dist_sync_on_step=False):
         super().__init__(dist_sync_on_step=dist_sync_on_step)
         self.add_state("total_line", default=torch.tensor(0.0), dist_reduce_fx="sum")
@@ -62,11 +74,12 @@ class ExpRateRecorder(Metric):
         exp_rate = self.rec / self.total_line
         return exp_rate
 
+
 def ce_loss(
-    output_hat: torch.Tensor,
-    output: torch.Tensor,
-    ignore_idx: int = vocab.PAD_IDX,
-    reduction: str = "mean",
+        output_hat: torch.Tensor,
+        output: torch.Tensor,
+        ignore_idx: int = vocab.PAD_IDX,
+        reduction: str = "mean",
 ) -> torch.Tensor:
     """comput cross-entropy loss
 
@@ -85,10 +98,10 @@ def ce_loss(
 
 
 def to_tgt_output(
-    batched_tokens: Union[List[List[int]], List[LongTensor]],
-    direction: str,
-    device: torch.device,
-    pad_to_len: Optional[int] = None,
+        batched_tokens: Union[List[List[int]], List[LongTensor]],
+        direction: str,
+        device: torch.device,
+        pad_to_len: Optional[int] = None,
 ) -> Tuple[LongTensor, LongTensor]:
     """Generate tgt and out for indices
 
@@ -142,7 +155,7 @@ def to_tgt_output(
     for i, token in enumerate(batched_tokens):
         # teacher forcing input: <SOS> <token1> <token2> <...> <tokenN> <optional-pad> <optional-pad> (l2r)
         tgt[i, 0] = start_w
-        tgt[i, 1 : (1 + lens[i])] = token
+        tgt[i, 1: (1 + lens[i])] = token
 
         # expected model output: <token1> <...> <tokenN> <EOS> <optional-pad> <optional-pad> (l2r)
         out[i, : lens[i]] = token
@@ -152,7 +165,7 @@ def to_tgt_output(
 
 
 def to_bi_tgt_out(
-    tokens: List[List[int]], device: torch.device,
+        tokens: List[List[int]], device: torch.device,
 ) -> Tuple[LongTensor, LongTensor]:
     """Generate bidirection tgt and out
 
