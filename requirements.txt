@@ -17,3 +17,5 @@ matplotlib==3.6.1
 typer==0.6.1
 beautifulsoup4==4.11.1
 lxml>=4.9.1
+numpy>=1.23.1
+levenshtein>=0.20.8

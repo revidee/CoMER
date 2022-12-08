@@ -9,19 +9,21 @@ from comer.utils.utils import (ce_loss,
 class CoMERFixMatchInterleaved(CoMERFixMatch):
     def training_step(self, batch: Batch, _):
         batch_size = len(batch)
-        contains_unlabeled = batch.unlabeled_start < batch_size
+        # contains_unlabeled = batch.unlabeled_start < batch_size
+        contains_unlabeled = False
         tgt, out = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 
         if contains_unlabeled:
             labeled_idx = torch.arange(0, batch.unlabeled_start, device=self.device)
             unlabeled_idx = torch.arange(batch.unlabeled_start, batch_size, device=self.device)
+
             # bi-dir training
             labeled_idx = torch.cat((labeled_idx, labeled_idx + batch_size), dim=0)
             unlabeled_idx = torch.cat((unlabeled_idx, unlabeled_idx + batch_size), dim=0)
 
             # labeled loss, averaged to the full batch_size
-            loss = ce_loss(out_hat[labeled_idx], out[labeled_idx])
+            loss = ce_loss(out_hat[labeled_idx], out[labeled_idx]) * labeled_idx.size(0) / (batch_size * 2)
             # + unlabeled loss, normalized by the "mask rate" of the unlabeled data
             # (i.e. % of successfully pseudo-labeled unlabeled samples)
             unlabeled_norm_fac = 1.0
@@ -30,7 +32,7 @@ class CoMERFixMatchInterleaved(CoMERFixMatch):
             else:
                 print("WARN: unlabeled norm factor was unset, but is expected to be set before the training begins.")
             loss += ce_loss(out_hat[unlabeled_idx], out[unlabeled_idx]) \
-                        * self.hparams.lambda_u * unlabeled_norm_fac
+                        * self.hparams.lambda_u * unlabeled_idx.size(0) / (batch_size * 2)
         else:
             loss = ce_loss(out_hat, out)
 

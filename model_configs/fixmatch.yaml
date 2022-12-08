@@ -16,9 +16,6 @@ fit:
           monitor: val_ExpRate/dataloader_idx_0
           mode: max
           filename: '{epoch}-{step}-{val_ExpRate/dataloader_idx_0:.4f}'
-      - class_path: comer.callbacks.SelfTrainingUpdater
-        init_args:
-          confidence_threshold: 0.6
     accelerator: 'gpu'
     devices: 0,1
     strategy:
@@ -26,11 +23,11 @@ fit:
       init_args:
         find_unused_parameters: False
     check_val_every_n_epoch: 2
-    max_epochs: 300
+    max_epochs: 450
     deterministic: true
     reload_dataloaders_every_n_epochs: 2
   model:
-    class_path: comer.modules.CoMERSelfTraining
+    class_path: comer.modules.CoMERFixMatchInterleaved
     init_args:
       d_model: 256
       # encoder
@@ -45,7 +42,7 @@ fit:
       cross_coverage: true
       self_coverage: true
       # beam search
-      beam_size: 5
+      beam_size: 10
       max_len: 200
       alpha: 1.0
       early_stopping: false
@@ -53,10 +50,10 @@ fit:
       # training
       learning_rate: 0.08
       patience: 20
-      pseudo_labeling_threshold: 0.985
+      pseudo_labeling_threshold: 0.9875
       lambda_u: 1.0
   data:
-    class_path: comer.datamodules.CROHMEFixMatch
+    class_path: comer.datamodules.CROHMEFixMatchInterleavedDatamodule
     init_args:
       zipfile_path: data.zip
       test_year: "2019"
@@ -64,5 +61,5 @@ fit:
       eval_batch_size: 4
       num_workers: 5
       train_aug: weak
-      unlabeled_pct: 0.5
-      unlabeled_strong_aug: strong
+      unlabeled_pct: 0.65
+      unlabeled_strong_aug: strong_mod

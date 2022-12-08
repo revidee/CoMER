@@ -1,2 +1,6 @@
 from comer.datamodules.crohme.variants.supervised import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme.variants.self_training import CROHMESelfTrainingDatamodule
+from comer.datamodules.crohme.variants.fixmatch import CROHMEFixMatchDatamodule
+from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
+
+from .oracle import Oracle

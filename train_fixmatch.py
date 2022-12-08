@@ -40,14 +40,15 @@ if __name__ == '__main__':
         num_workers=5,
         unlabeled_pct=0.65,
         train_sorting=1,
-        unlabeled_strong_aug="strong_mod"
+        unlabeled_strong_aug="weak",
+        unlabeled_weak_aug=""
     )
 
     model: CoMERFixMatch = CoMERFixMatchInterleaved.load_from_checkpoint(
         './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt',
-        learning_rate=0.001,
-        patience=20,
-        pseudo_labeling_threshold=0.985,
+        learning_rate=0.0008,
+        patience=40,
+        pseudo_labeling_threshold=0.95,
         lambda_u=1.0
     )
 
