@@ -6,7 +6,8 @@ from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoader
 from comer.datamodules.crohme import Batch, vocab
 from comer.modules import CoMERFixMatchInterleaved
 
-class CoMERFixMatchInterleaved(CoMERFixMatchInterleaved):
+
+class CoMERFixMatchOracleInterleaved(CoMERFixMatchInterleaved):
     def unlabeled_full(self, data_fetcher: AbstractDataFetcher,
                        start_batch: Callable, end_batch: Callable, dataloader_idx: int):
         is_iter_data_fetcher = isinstance(data_fetcher, DataLoaderIterDataFetcher)
