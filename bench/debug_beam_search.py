@@ -1,3 +1,4 @@
+import math
 from typing import List
 from zipfile import ZipFile
 
@@ -6,11 +7,12 @@ import torch
 import torchvision.transforms as tr
 from PIL.Image import Image
 from jsonargparse import CLI
+from pytorch_lightning import seed_everything
 from torchvision.transforms import ToPILImage
 
 from comer.datamodules import Oracle
 from comer.datamodules.crohme import extract_data_entries, vocab
-from comer.datamodules.crohme.batch import build_batches_from_samples, BatchTuple, Batch
+from comer.datamodules.crohme.batch import build_batches_from_samples, BatchTuple, Batch, get_splitted_indices
 from comer.datamodules.crohme.dataset import W_LO, H_LO, H_HI, W_HI
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.datamodules.utils.randaug import RandAugment
@@ -40,64 +42,96 @@ def main(gpu: int = 1):
         print("model loaded")
 
         with ZipFile("data.zip") as archive:
-            entries = extract_data_entries(archive, "2014", to_device=device)
-            oracle = Oracle(entries)
-            batch_tuple: List[BatchTuple] = build_batches_from_samples(
-                entries,
-                4,
-                batch_imagesize=(2200 * 250 * 4),
-                max_imagesize=(2200 * 250),
-                include_last_only_full=True
-            )[::-1]
 
-            batch: Batch = collate_fn([batch_tuple[0]]).to(device)
+            seed_everything(7)
+            full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train", to_device=device)
 
-            batch_tuple_single: List[BatchTuple] = build_batches_from_samples(
-                entries,
-                1,
-                batch_imagesize=(2200 * 250 * 4),
-                max_imagesize=(2200 * 250),
-                include_last_only_full=True
-            )[::-1]
-            test: BatchTuple = batch_tuple_single[2]
-            test[0].append(batch_tuple_single[3][0][0])
-            test[1].append(batch_tuple_single[3][1][0])
-            test[2].append(batch_tuple_single[3][2][0])
-            batch_single: Batch = collate_fn([test]).to(device)
+            labeled_indices, unlabeled_indices = get_splitted_indices(
+                full_train_data,
+                unlabeled_pct=0.65,
+                sorting_mode=1
+            )
+            labeled_data, unlabeled_data = full_train_data[labeled_indices], full_train_data[
+                unlabeled_indices]
+            oracle = Oracle(unlabeled_data)
 
-            feature, mask = model.comer_model.encoder(batch_single.imgs, batch_single.mask)
-            corner_vecs = torch.cat((
-                feature[1, 0, 0, :],
-                feature[1, 11, 0, :],
-                feature[1, 0, 70, :],
-                feature[1, 11, 70, :]
-            ))
-            corner_vecs_m = torch.tensor([
-                mask[1, 0, 0],
-                mask[1, 11, 0],
-                mask[1, 0, 70],
-                mask[1, 11, 70]
-            ])
+            pseudo_labeling_batches = build_batches_from_samples(
+                unlabeled_data,
+                4
+            )
 
-            np.savetxt("test_1_ft.txt", corner_vecs.cpu().numpy())
-            np.savetxt("test_1_mask.txt", corner_vecs_m.cpu().numpy())
+            th = math.log(0.9875)
 
-            feature, mask = model.comer_model.encoder(batch.imgs, batch.mask)
-            corner_vecs = torch.cat((
-                feature[1, 0, 0, :],
-                feature[1, 11, 0, :],
-                feature[1, 0, 70, :],
-                feature[1, 11, 70, :]
-            ))
-            corner_vecs_m = torch.tensor([
-                mask[1, 0, 0],
-                mask[1, 11, 0],
-                mask[1, 0, 70],
-                mask[1, 11, 70]
-            ])
+            for batch_raw in pseudo_labeling_batches:
+                batch = collate_fn([batch_raw]).to(device=device)
+                hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False)
+                for i, h in enumerate(hyps):
+                    score = oracle.confidence_indices(batch.img_bases[i], h.seq)
+                    if score >= th:
+                        print(vocab.indices2label(h.seq))
+                        print(vocab.indices2label(oracle.label_idx_dict[batch.img_bases[i]]))
+                    else:
+                        print(score, "###", vocab.indices2label(h.seq))
+                        print(score, "###", vocab.indices2label(oracle.label_idx_dict[batch.img_bases[i]]))
 
-            np.savetxt("test_2_ft.txt", corner_vecs.cpu().numpy())
-            np.savetxt("test_2_mask.txt", corner_vecs_m.cpu().numpy())
+            # entries = extract_data_entries(archive, "2014", to_device=device)
+            # oracle = Oracle(entries)
+            # batch_tuple: List[BatchTuple] = build_batches_from_samples(
+            #     entries,
+            #     4,
+            #     batch_imagesize=(2200 * 250 * 4),
+            #     max_imagesize=(2200 * 250),
+            #     include_last_only_full=True
+            # )[::-1]
+            #
+            # batch: Batch = collate_fn([batch_tuple[0]]).to(device)
+            #
+            # batch_tuple_single: List[BatchTuple] = build_batches_from_samples(
+            #     entries,
+            #     1,
+            #     batch_imagesize=(2200 * 250 * 4),
+            #     max_imagesize=(2200 * 250),
+            #     include_last_only_full=True
+            # )[::-1]
+            # test: BatchTuple = batch_tuple_single[2]
+            # test[0].append(batch_tuple_single[3][0][0])
+            # test[1].append(batch_tuple_single[3][1][0])
+            # test[2].append(batch_tuple_single[3][2][0])
+            # batch_single: Batch = collate_fn([test]).to(device)
+            #
+            # feature, mask = model.comer_model.encoder(batch_single.imgs, batch_single.mask)
+            # corner_vecs = torch.cat((
+            #     feature[1, 0, 0, :],
+            #     feature[1, 11, 0, :],
+            #     feature[1, 0, 70, :],
+            #     feature[1, 11, 70, :]
+            # ))
+            # corner_vecs_m = torch.tensor([
+            #     mask[1, 0, 0],
+            #     mask[1, 11, 0],
+            #     mask[1, 0, 70],
+            #     mask[1, 11, 70]
+            # ])
+            #
+            # np.savetxt("test_1_ft.txt", corner_vecs.cpu().numpy())
+            # np.savetxt("test_1_mask.txt", corner_vecs_m.cpu().numpy())
+            #
+            # feature, mask = model.comer_model.encoder(batch.imgs, batch.mask)
+            # corner_vecs = torch.cat((
+            #     feature[1, 0, 0, :],
+            #     feature[1, 11, 0, :],
+            #     feature[1, 0, 70, :],
+            #     feature[1, 11, 70, :]
+            # ))
+            # corner_vecs_m = torch.tensor([
+            #     mask[1, 0, 0],
+            #     mask[1, 11, 0],
+            #     mask[1, 0, 70],
+            #     mask[1, 11, 70]
+            # ])
+            #
+            # np.savetxt("test_2_ft.txt", corner_vecs.cpu().numpy())
+            # np.savetxt("test_2_mask.txt", corner_vecs_m.cpu().numpy())
 
             # hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False)
             #
