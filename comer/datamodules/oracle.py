@@ -6,7 +6,8 @@ from Levenshtein import distance
 
 
 def _general_confidence(gt: Sequence[Hashable], pred: Sequence[Hashable]):
-    return math.log(1.0 - (distance(gt, pred, score_cutoff=(len(gt) - 1)) / len(gt)))
+    wrong_pct_levenshtein = (distance(gt, pred, score_cutoff=(len(gt) - 1)) / len(gt))
+    return math.log(1.0 - wrong_pct_levenshtein) if wrong_pct_levenshtein < 1.0 else float("-Inf")
 
 
 class Oracle:
