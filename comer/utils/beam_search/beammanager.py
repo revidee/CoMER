@@ -161,9 +161,14 @@ class BeamManager:
         """
         if len(self.best_hyps) == 0:
             return self.best_hyps
-        if self.is_direction_l2r:
-            return [(score, seq[1:-1], history[:-1]) for (score, seq, history) in self.best_hyps]
-        return [(score,
-                 torch.flip(seq[1:-1], dims=[0]),
-                 torch.flip(history[:-1], dims=[0])
-                 ) for (score, seq, history) in self.best_hyps]
+        output = []
+        for (score, seq, history) in self.best_hyps:
+            summed_history = history[:-1]
+            shifted_history = torch.zeros((summed_history.size(0)), device=self.device)
+            shifted_history[1:] = summed_history[:-1]
+            single_logits = summed_history - shifted_history
+            if self.is_direction_l2r:
+                output.append((score, seq[1:-1], single_logits))
+            else:
+                output.append((score, torch.flip(seq[1:-1], dims=[0]), torch.flip(single_logits, dims=[0])))
+        return output

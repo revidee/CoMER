@@ -507,18 +507,33 @@ class DecodeModel(pl.LightningModule):
                     curr_best_score = hyp_cand_score
                     curr_best_idx_from_l2r = False
 
+            start_l2r, start_r2l = curr_offset_l2r, curr_offset_r2l
             curr_offset_r2l += len_r2l
             curr_offset_l2r += len_l2r
             if curr_best_idx != -1:
                 if curr_best_idx_from_l2r:
                     output_hyps.append(
                         Hypothesis(hyps_l2r[curr_best_idx], scores_l2r[curr_best_idx],
-                                   "l2r", history=history_l2r[curr_best_idx], was_l2r=True)
+                                   "l2r", history=history_l2r[curr_best_idx], was_l2r=True,
+                                   all_l2r_hyps=hyps_l2r[start_l2r:curr_offset_l2r],
+                                   all_l2r_scores=scores_l2r[start_l2r:curr_offset_l2r],
+                                   all_l2r_history=history_l2r[start_l2r:curr_offset_l2r],
+                                   all_r2l_hyps=hyps_r2l[start_r2l:curr_offset_r2l],
+                                   all_r2l_scores=scores_r2l[start_r2l:curr_offset_r2l],
+                                   all_r2l_history=history_r2l[start_r2l:curr_offset_r2l],
+                                   )
                     )
                 else:
                     output_hyps.append(
                         Hypothesis(hyps_r2l[curr_best_idx], scores_r2l[curr_best_idx],
-                                   "l2r", history=history_r2l[curr_best_idx], was_l2r=False)
+                                   "l2r", history=history_r2l[curr_best_idx], was_l2r=False,
+                                   all_l2r_hyps=hyps_l2r[start_l2r:curr_offset_l2r],
+                                   all_l2r_scores=scores_l2r[start_l2r:curr_offset_l2r],
+                                   all_l2r_history=history_l2r[start_l2r:curr_offset_l2r],
+                                   all_r2l_hyps=hyps_r2l[start_r2l:curr_offset_r2l],
+                                   all_r2l_scores=scores_r2l[start_r2l:curr_offset_r2l],
+                                   all_r2l_history=history_r2l[start_r2l:curr_offset_r2l],
+                                   )
                     )
             else:
                 output_hyps.append(Hypothesis(torch.empty(0, device=self.device, dtype=torch.long), float('-Inf'), "l2r"))

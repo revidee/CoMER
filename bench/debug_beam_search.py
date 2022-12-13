@@ -1,5 +1,5 @@
 import math
-from typing import List
+from typing import List, Dict
 from zipfile import ZipFile
 
 import numpy as np
@@ -8,6 +8,7 @@ import torchvision.transforms as tr
 from PIL.Image import Image
 from jsonargparse import CLI
 from pytorch_lightning import seed_everything
+from torch import FloatTensor
 from torchvision.transforms import ToPILImage
 
 from comer.datamodules import Oracle
@@ -21,11 +22,13 @@ from comer.modules import CoMERSupervised
 from comer.utils.utils import Hypothesis, to_bi_tgt_out
 import torch.nn.functional as F
 
+from Levenshtein import median, median_improve
+
 # checkpoint_path = "./bench/epoch3.ckpt"
-checkpoint_path = "./bench/baseline_t112.ckpt"
+checkpoint_path = './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt'
 
 
-def main(gpu: int = 1):
+def main(gpu: int = -1):
     print("init")
     print(f"- gpu: cuda:{gpu}")
     print(f"- cp: {checkpoint_path}")
@@ -35,16 +38,18 @@ def main(gpu: int = 1):
         device = torch.device(f"cuda:{gpu}")
 
     with torch.no_grad():
-        model: CoMERSupervised = CoMERSupervised.load_from_checkpoint(checkpoint_path)
-        model = model.eval().to(device)
-        model.share_memory()
+        # model: CoMERSupervised = CoMERSupervised.load_from_checkpoint(checkpoint_path)
+        # model = model.eval().to(device)
+        # model.share_memory()
 
         print("model loaded")
 
         with ZipFile("data.zip") as archive:
 
             seed_everything(7)
+
             full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train", to_device=device)
+            oracle = Oracle(full_train_data)
 
             labeled_indices, unlabeled_indices = get_splitted_indices(
                 full_train_data,
@@ -53,29 +58,202 @@ def main(gpu: int = 1):
             )
             labeled_data, unlabeled_data = full_train_data[labeled_indices], full_train_data[
                 unlabeled_indices]
-            oracle = Oracle(unlabeled_data)
 
             pseudo_labeling_batches = build_batches_from_samples(
                 unlabeled_data,
                 4
             )
 
-            th = math.log(0.9875)
+            th = math.log(0.9959)
 
-            for batch_raw in pseudo_labeling_batches:
-                batch = collate_fn([batch_raw]).to(device=device)
-                hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False)
-                for i, h in enumerate(hyps):
-                    score = oracle.confidence_indices(batch.img_bases[i], h.seq)
-                    if score >= th:
-                        print(vocab.indices2label(h.seq))
-                        print(vocab.indices2label(oracle.label_idx_dict[batch.img_bases[i]]))
+            all_hyps: Dict[str, Hypothesis] = torch.load("../hyps.pt", map_location=torch.device('cpu'))
+
+            correct_hyps = 0
+            correct_median = 0
+
+            def calc_score(history: FloatTensor, tot_score: FloatTensor):
+                summed_logits = torch.sum(history)
+                min_logits = torch.min(history)
+                return min_logits
+
+            def calc_median(hyp: Hypothesis, fname: str):
+                if (len(hyp.all_l2r_hyps) == 0) or (len(hyp.all_r2l_hyps) == 0):
+                    return hyp.seq, hyp.history
+                min_l2r = min((len(hyp.all_l2r_hyps), 2))
+                min_r2l = min((len(hyp.all_r2l_hyps), 2))
+                best_l2r_scores, best_l2r_idx = torch.topk(hyp.all_l2r_scores, k=min_l2r)
+                best_r2l_scores, best_r2l_idx = torch.topk(hyp.all_r2l_scores, k=min_r2l)
+                bstrs = []
+                wlist = []
+                abs_best_l2r = []
+                abs_best_l2r_history = []
+                abs_best_r2l = []
+                abs_best_r2l_history = []
+                for best, score in enumerate(best_l2r_scores):
+                    if best == 0:
+                        abs_best_l2r = hyp.all_l2r_hyps[best_l2r_idx[best]].tolist()
+                        abs_best_l2r_history = hyp.all_l2r_history[best_l2r_idx[best]]
+                    bstrs.append(bytes(hyp.all_l2r_hyps[best_l2r_idx[best]].tolist()))
+                    wlist.append(1 / (100 * abs(float(score))))
+                for best, score in enumerate(best_r2l_scores):
+                    if best == 0:
+                        abs_best_r2l = hyp.all_r2l_hyps[best_r2l_idx[best]].tolist()
+                        abs_best_r2l_history = hyp.all_r2l_history[best_r2l_idx[best]]
+                    bstrs.append(bytes(hyp.all_r2l_hyps[best_r2l_idx[best]].tolist()))
+                    wlist.append(1 / (100 * abs(float(score))))
+                if len(abs_best_l2r) == 0:
+                    abs_best_l2r = abs_best_r2l
+                    abs_best_l2r_history = abs_best_r2l_history
+                if len(abs_best_r2l) == 0:
+                    abs_best_r2l = abs_best_l2r
+                    abs_best_r2l_history = abs_best_l2r_history
+
+                mstr = list(bytearray(median(bstrs, wlist), "utf-8"))
+                mhistory = hyp.history.copy()
+                if len(mhistory) != len(mstr):
+                    if len(mhistory) > len(mstr):
+                        mhistory = mhistory[:len(mstr)]
                     else:
-                        print(score, "###", vocab.indices2label(h.seq))
-                        print(score, "###", vocab.indices2label(oracle.label_idx_dict[batch.img_bases[i]]))
+                        for i in range(abs(len(mhistory) - len(mstr))):
+                            mhistory.append(hyp.score / 2)
+                # mstr = hyp.seq
+                mstr_len = len(mstr)
+
+                gt = oracle.get_gt_indices(fname)
+                gt_len = len(gt)
+
+                for i, token in enumerate(abs_best_l2r):
+                    if (i >= gt_len) or (i >= mstr_len) or (gt[i] != token):
+                        break
+                    mstr[i] = token
+                    mhistory[i] = abs_best_l2r_history[i]
+
+                i = 0
+                for r2l_i, token in reversed(list(enumerate(abs_best_r2l))):
+                    if (i >= gt_len) or (i >= mstr_len) or gt[gt_len - i - 1] != token:
+                        break
+                    mstr[mstr_len - 1 - i] = token
+                    mhistory[mstr_len - 1 - i] = abs_best_r2l_history[r2l_i]
+                    i += 1
+
+                return mstr, mhistory
+
+            min_med_conf_passed = 0
+            min_med_conf_passed_correct = 0
+            min_conf_passed = 0
+            min_conf_passed_correct = 0
+
+            for fname, hyp in all_hyps.items():
+                lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
+                if lev_dist == 0:
+                    correct_hyps += 1
+
+                mpred, mhistory = calc_median(hyp, fname)
+                if oracle.levenshtein_indices(fname, mpred) == 0:
+                    correct_median += 1
+
+                if min(mhistory) >= th:
+                    min_med_conf_passed += 1
+                    if lev_dist == 0:
+                        min_med_conf_passed_correct += 1
+                if min(hyp.history) >= th:
+                    min_conf_passed += 1
+                    if lev_dist == 0:
+                        min_conf_passed_correct += 1
+
+            print(len(all_hyps), correct_hyps, correct_median)
+            print(min_med_conf_passed, min_med_conf_passed_correct, min_med_conf_passed_correct / min_med_conf_passed)
+            print(min_conf_passed, min_conf_passed_correct, min_conf_passed_correct / min_conf_passed)
+            # def calc_min(th_pseudo_perc: float, exp: float = 1.0):
+            #     th_min = math.log(th_pseudo_perc)
+            #     min_conf_passed = 0
+            #     min_conf_passed_correct = 0
+            #     min_conf_lev_sum = 0
+            #     correct_hyps = 0
+            #
+            #     for fname, hyp in all_hyps.items():
+            #         lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
+            #         if lev_dist == 0:
+            #             correct_hyps += 1
+            #
+            #         seq_len = len(hyp.seq)
+            #         if (hyp.score / 2) * (exp ** (1 + 5 * math.log(seq_len))) > th_min:
+            #             min_conf_passed += 1
+            #             if lev_dist == 0:
+            #                 min_conf_passed_correct += 1
+            #             else:
+            #                 min_conf_lev_sum += lev_dist
+            #         # if len(hyp.history) > 0:
+            #         #     min_score = min(hyp.history)
+            #         #     if (min_score * (exp ** (1 + 5 * math.log(seq_len)))) > th_min:
+            #         #         # if (min_score) > th_min:
+            #         #         min_conf_passed += 1
+            #         #         if lev_dist == 0:
+            #         #             min_conf_passed_correct += 1
+            #         #         else:
+            #         #             min_conf_lev_sum += lev_dist
+            #     return min_conf_passed, min_conf_passed_correct,\
+            #         min_conf_passed_correct / correct_hyps if correct_hyps > 0 else 0,\
+            #         min_conf_passed_correct / min_conf_passed  if min_conf_passed > 0 else 0
+            #
+            #
+            # curr_min = 0.95
+            # curr_max = 1.0
+            #
+            # steps = 1000
+            # step_size = (curr_max - curr_min) / steps
+            #
+            # best = 0.95
+            # best_score = float('-Inf')
+            # best_cov, best_pass, best_corr, best_pct, best_exp = 0, 0, 0, 0, 0
+            #
+            # cov_exp = 15
+            #
+            # exp_steps = 20
+            # exp_min = 1.0
+            # exp_max = 1.2
+            # exp_step_size = (exp_max - exp_min) / exp_steps
+
+            # for i in range(steps):
+            #     curr = curr_min + step_size * i
+            #     for x in range(exp_steps):
+            #         exp = exp_min + x * exp_step_size
+            #         m_pass, m_corr, cov_pct, correct_pct = calc_min(curr, exp)
+            #
+            #         # print(curr, cov_pct, correct_pct, (cov_pct * correct_pct))
+            #
+            #         if (m_corr * (correct_pct ** cov_exp)) > best_score:
+            #             best = curr
+            #             best_score = (m_corr * (correct_pct ** cov_exp))
+            #             best_cov = cov_pct
+            #             best_pass = m_pass
+            #             best_corr = m_corr
+            #             best_pct = correct_pct
+            #             best_exp = exp
+            # print(best, best_exp, best_score, best_cov, best_pass, best_corr, best_pct)
+            # print(calc_min(0.9875))
+
+
+            # min = 0.95
+            # change = 1
+
+            # print("Hyps", len(all_hyps), "Correct", correct_hyps)
+            # print("AVG", "Passed: ", avg_conf_passed, " Correct: ", avg_conf_passed_correct, f"{avg_conf_passed_correct * 100 / avg_conf_passed:.2f}", avg_conf_lev_sum / (avg_conf_passed - avg_conf_passed_correct))
+            # print("MIN", "Passed: ", min_conf_passed, " Correct: ", min_conf_passed_correct, f"{min_conf_passed_correct * 100 / min_conf_passed:.2f}", min_conf_lev_sum / (min_conf_passed - min_conf_passed_correct))
+            #
+
+
+            # for batch_raw in pseudo_labeling_batches:
+            #     batch = collate_fn([batch_raw]).to(device=device)
+            #     hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False)
+            #     for i, hyp in enumerate(hyps):
+            #         all_hyps[batch.img_bases[i]] = hyp
+
+            # torch.save(all_hyps, "hyps.pt")
+
 
             # entries = extract_data_entries(archive, "2014", to_device=device)
-            # oracle = Oracle(entries)
+            #
             # batch_tuple: List[BatchTuple] = build_batches_from_samples(
             #     entries,
             #     4,
@@ -85,7 +263,7 @@ def main(gpu: int = 1):
             # )[::-1]
             #
             # batch: Batch = collate_fn([batch_tuple[0]]).to(device)
-            #
+
             # batch_tuple_single: List[BatchTuple] = build_batches_from_samples(
             #     entries,
             #     1,
@@ -98,7 +276,7 @@ def main(gpu: int = 1):
             # test[1].append(batch_tuple_single[3][1][0])
             # test[2].append(batch_tuple_single[3][2][0])
             # batch_single: Batch = collate_fn([test]).to(device)
-            #
+
             # feature, mask = model.comer_model.encoder(batch_single.imgs, batch_single.mask)
             # corner_vecs = torch.cat((
             #     feature[1, 0, 0, :],
@@ -153,7 +331,6 @@ def main(gpu: int = 1):
             #     pred = hyps[i].seq
             #     pred_len = len(pred)
             #     lines = [[], [], [], [], [], [], [], []]
-            #     prev_logit = 0
             #     diff = gt_len - pred_len
             #     for sym in range(gt_len):
             #         str_gt_l2r = vocab.idx2word[gt[sym]]
@@ -167,15 +344,7 @@ def main(gpu: int = 1):
             #         if sym < pred_len:
             #             str_pred_l2r = vocab.idx2word[pred[sym]]
             #             logit_l2r_str = f"{logits[i, sym, pred[sym]]:.1E}"
-            #             if hyps[i].was_l2r:
-            #                 single_logit = hyps[i].history[sym] - prev_logit
-            #                 prev_logit = hyps[i].history[sym]
-            #             else:
-            #                 if sym < pred_len - 1:
-            #                     single_logit = hyps[i].history[sym] - hyps[i].history[sym + 1]
-            #                 else:
-            #                     single_logit = hyps[i].history[sym]
-            #
+            #             single_logit = hyps[i].history[sym]
             #             logit_str = f"{single_logit:.1E}"
             #         if sym >= diff:
             #             str_pred_r2l = vocab.idx2word[pred[sym - diff]]

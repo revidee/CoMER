@@ -14,13 +14,26 @@ class Hypothesis:
     history: List[float]
     was_l2r: bool
 
+    all_l2r_hyps: Union[List[LongTensor], None] = None
+    all_l2r_scores: Union[FloatTensor, None] = None
+    all_l2r_history: Union[List[FloatTensor], None] = None
+    all_r2l_hyps: Union[List[LongTensor], None] = None
+    all_r2l_scores: Union[FloatTensor, None] = None
+    all_r2l_history: Union[List[FloatTensor], None] = None
+
     def __init__(
             self,
             seq_tensor: LongTensor,
             score: float,
             direction: str,
             history: Union[FloatTensor, None] = None,
-            was_l2r: bool = False
+            was_l2r: bool = False,
+            all_l2r_hyps: Union[List[LongTensor], None] = None,
+            all_l2r_scores: Union[FloatTensor, None] = None,
+            all_l2r_history: Union[List[FloatTensor], None] = None,
+            all_r2l_hyps: Union[List[LongTensor], None] = None,
+            all_r2l_scores: Union[FloatTensor, None] = None,
+            all_r2l_history: Union[List[FloatTensor], None] = None
     ) -> None:
         assert direction in {"l2r", "r2l"}
         raw_seq = seq_tensor.tolist()
@@ -39,6 +52,14 @@ class Hypothesis:
             self.history = history.tolist()
         else:
             self.history = []
+
+        self.all_l2r_hyps = all_l2r_hyps
+        self.all_l2r_scores = all_l2r_scores
+        self.all_l2r_history = all_l2r_history
+
+        self.all_r2l_hyps = all_r2l_hyps
+        self.all_r2l_scores = all_r2l_scores
+        self.all_r2l_history = all_r2l_history
 
     def __len__(self):
         if len(self.seq) != 0:
