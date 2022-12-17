@@ -89,7 +89,7 @@ def get_splitted_indices(
 
     idx_order = np.arange(total_len, dtype=int)
 
-    if sorting_mode == 2:
+    if sorting_mode == 2 or sorting_mode == 3:
         is_pil_image = isinstance(data[0].image, Image)
         if is_pil_image:
             get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size[0] * x.image.size[1]
@@ -98,6 +98,8 @@ def get_splitted_indices(
         idx_order = np.argsort(
             np.vectorize(get_entry_image_pixels)(data)
         )
+        if sorting_mode == 3:
+            idx_order = np.flip(idx_order)
 
     if sorting_mode == 1:
         np.random.seed(torch.initial_seed())
@@ -120,7 +122,7 @@ def build_batch_split_from_entries(
         maxlen: int = 200,
         max_imagesize: int = MAX_SIZE,
         unlabeled_pct: float = 0,
-        sorting_mode: int = 0  # 0 = nothing, 1 = random, 2 = sorted
+        sorting_mode: int = 0  # 0 = nothing, 1 = random, 2 = sorted (asc), 3 = sorted (dsc)
 ) -> Tuple[List[BatchTuple], List[BatchTuple]]:
     labeled_indices, unlabeled_indices = get_splitted_indices(data, unlabeled_pct=unlabeled_pct, sorting_mode=sorting_mode)
 
@@ -315,7 +317,7 @@ def build_dataset(
         folder: str,
         batch_size: int,
         unlabeled_pct: float = 0,
-        sorting_mode: int = 0,  # 0 = nothing, 1 = random, 2 = sorted
+        sorting_mode: int = 0,  # 0 = nothing, 1 = random, 2 = sorted (asc), 3 = sorted (dsc)
 ) -> Tuple[List[BatchTuple], List[BatchTuple]]:
     return build_batch_split_from_entries(extract_data_entries(archive, folder), batch_size,
                                           unlabeled_pct=unlabeled_pct, sorting_mode=sorting_mode)

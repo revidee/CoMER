@@ -381,7 +381,7 @@ class DecodeModel(pl.LightningModule):
         penalty = (~mask).sum(dim=1) ** alpha
         loss = -torch.sum(loss, dim=1) / penalty
 
-        return loss
+        return loss, out_hat
 
     def new_beam_search(
             self,
@@ -456,7 +456,7 @@ class DecodeModel(pl.LightningModule):
                 tgt = torch.cat((r2l_tgt, l2r_tgt), dim=0)
                 out = torch.cat((r2l_out, l2r_out), dim=0)
 
-            rev_scores = self._new_rate(
+            rev_scores, out_hat = self._new_rate(
                 torch.cat(
                     (
                         torch.repeat_interleave(src, repeats_l2r, dim=0),
@@ -471,6 +471,11 @@ class DecodeModel(pl.LightningModule):
                 ),
                 tgt, out, alpha, temperature
             )
+            out_hat = torch.flip(
+                F.log_softmax(
+                    out_hat,
+                    dim=-1
+                ), dims=[1])
             if debug:
                 print("rev_scores:")
                 for i, single_tgt in enumerate(tgt):
@@ -486,6 +491,8 @@ class DecodeModel(pl.LightningModule):
         output_hyps: List[Hypothesis] = []
         curr_offset_l2r = 0
         curr_offset_r2l = 0
+        l2r_rev: List[FloatTensor] = []
+        r2l_rev: List[FloatTensor] = []
         # Find the best hyp from the (optionally rescored) set of best l2r/r2l hyps.
         for src_idx, (len_l2r, len_r2l) in enumerate(zip(repeats_l2r, repeats_r2l)):
             # choose the best candidate for each input from the batch
@@ -495,6 +502,16 @@ class DecodeModel(pl.LightningModule):
             for i in range(len_l2r):
                 hyp_cand_idx = curr_offset_l2r + i
                 hyp_cand_score = scores_l2r[hyp_cand_idx]
+                l2r_rev.append(
+                    torch.gather(
+                        out_hat[
+                            hyp_cand_idx,
+                            (max_len - hyps_l2r[hyp_cand_idx].size(0)):
+                        ],
+                        1,
+                        hyps_l2r[hyp_cand_idx].unsqueeze(-1),
+                    ).squeeze(-1)
+                )
                 if hyp_cand_score > curr_best_score:
                     curr_best_idx = hyp_cand_idx
                     curr_best_score = hyp_cand_score
@@ -502,6 +519,16 @@ class DecodeModel(pl.LightningModule):
             for i in range(len_r2l):
                 hyp_cand_idx = curr_offset_r2l + i
                 hyp_cand_score = scores_r2l[hyp_cand_idx]
+                r2l_rev.append(
+                    torch.gather(
+                        out_hat[
+                        hyps_l2r_len + hyp_cand_idx,
+                            (max_len - hyps_r2l[hyp_cand_idx].size(0)):
+                        ],
+                        1,
+                        hyps_r2l[hyp_cand_idx].unsqueeze(-1),
+                    ).squeeze(-1)
+                )
                 if hyp_cand_score > curr_best_score:
                     curr_best_idx = hyp_cand_idx
                     curr_best_score = hyp_cand_score
@@ -521,6 +548,9 @@ class DecodeModel(pl.LightningModule):
                                    all_r2l_hyps=hyps_r2l[start_r2l:curr_offset_r2l],
                                    all_r2l_scores=scores_r2l[start_r2l:curr_offset_r2l],
                                    all_r2l_history=history_r2l[start_r2l:curr_offset_r2l],
+                                   best_rev=l2r_rev[curr_best_idx],
+                                   all_l2r_rev_scores=l2r_rev[start_l2r:curr_offset_l2r],
+                                   all_r2l_rev_scores=r2l_rev[start_r2l:curr_offset_r2l],
                                    )
                     )
                 else:
@@ -533,6 +563,9 @@ class DecodeModel(pl.LightningModule):
                                    all_r2l_hyps=hyps_r2l[start_r2l:curr_offset_r2l],
                                    all_r2l_scores=scores_r2l[start_r2l:curr_offset_r2l],
                                    all_r2l_history=history_r2l[start_r2l:curr_offset_r2l],
+                                   best_rev=r2l_rev[curr_best_idx],
+                                   all_l2r_rev_scores=l2r_rev[start_l2r:curr_offset_l2r],
+                                   all_r2l_rev_scores=r2l_rev[start_r2l:curr_offset_r2l],
                                    )
                     )
             else:

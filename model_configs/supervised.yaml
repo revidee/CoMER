@@ -19,7 +19,7 @@ fit:
 #    accelerator: 'cpu'
     # fast_dev_run: True
     accelerator: 'gpu'
-    devices: 0,1,6,7
+    devices: 0,1
     strategy:
       class_path: pytorch_lightning.strategies.ddp.DDPStrategy
       init_args:
@@ -60,5 +60,5 @@ fit:
       eval_batch_size: 4
       num_workers: 5
       train_aug: weak
-      unlabeled_pct: 0.0
+      unlabeled_pct: 0.85
       train_sorting: 1

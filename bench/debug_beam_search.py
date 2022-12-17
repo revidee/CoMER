@@ -1,4 +1,5 @@
 import math
+from collections import defaultdict
 from typing import List, Dict
 from zipfile import ZipFile
 
@@ -24,8 +25,13 @@ import torch.nn.functional as F
 
 from Levenshtein import median, median_improve
 
+import numpy as np
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+
 # checkpoint_path = "./bench/epoch3.ckpt"
-checkpoint_path = './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt'
+checkpoint_path = './lightning_logs/version_48/checkpoints/ep=251-st=51982-valLoss=0.3578.ckpt'
 
 
 def main(gpu: int = -1):
@@ -51,22 +57,9 @@ def main(gpu: int = -1):
             full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train", to_device=device)
             oracle = Oracle(full_train_data)
 
-            labeled_indices, unlabeled_indices = get_splitted_indices(
-                full_train_data,
-                unlabeled_pct=0.65,
-                sorting_mode=1
-            )
-            labeled_data, unlabeled_data = full_train_data[labeled_indices], full_train_data[
-                unlabeled_indices]
+            th = math.log(0.995)
 
-            pseudo_labeling_batches = build_batches_from_samples(
-                unlabeled_data,
-                4
-            )
-
-            th = math.log(0.9959)
-
-            all_hyps: Dict[str, Hypothesis] = torch.load("../hyps.pt", map_location=torch.device('cpu'))
+            all_hyps: Dict[str, Hypothesis] = torch.load("../hyps_st_15.pt", map_location=torch.device('cpu'))
 
             correct_hyps = 0
             correct_median = 0
@@ -138,32 +131,106 @@ def main(gpu: int = -1):
 
                 return mstr, mhistory
 
-            min_med_conf_passed = 0
-            min_med_conf_passed_correct = 0
-            min_conf_passed = 0
-            min_conf_passed_correct = 0
+            counters = defaultdict(float)
+            total_conf_correct = 0.0
+            min_correct_conf = float('Inf')
+
+            def calc_vec(hyp: Hypothesis):
+                # token_vec = np.zeros(vocab.__len__() + 1)
+                # total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
+                # token_vec[vocab.__len__()] = total
+                # for idx, token in enumerate(hyp.seq):
+                #     token_vec[token] += hyp.history[idx] * 100 * tota
+
+                # token_vec = np.zeros(400)
+                # for idx, token in enumerate(hyp.seq):
+                #     token_vec[idx] = token
+                #     token_vec[200 + idx] = hyp.history[idx]
+
+                token_vec = np.zeros(vocab.__len__() * 2)
+                total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
+                for idx, token in enumerate(hyp.seq):
+                    token_vec[token] += hyp.history[idx] * 100 * total
+                    token_vec[vocab.__len__() + token] += hyp.best_rev[idx] * 100 * total
+                return token_vec
+
+            X_normal = []
+            y_normal = []
 
             for fname, hyp in all_hyps.items():
                 lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
+                y = 0
+
                 if lev_dist == 0:
-                    correct_hyps += 1
+                    y = 1
+                    counters["correct"] += 1
+                    min_conf = min(hyp.history)
+                    total_conf_correct += min_conf
+                    if min_conf < min_correct_conf:
+                        min_correct_conf = min_conf
+
+
 
                 mpred, mhistory = calc_median(hyp, fname)
-                if oracle.levenshtein_indices(fname, mpred) == 0:
-                    correct_median += 1
+                mpred_lev_dist = oracle.levenshtein_indices(fname, mpred)
+                if mpred_lev_dist == 0:
+                    counters["median_correct"] += 1
 
                 if min(mhistory) >= th:
-                    min_med_conf_passed += 1
-                    if lev_dist == 0:
-                        min_med_conf_passed_correct += 1
-                if min(hyp.history) >= th:
-                    min_conf_passed += 1
-                    if lev_dist == 0:
-                        min_conf_passed_correct += 1
+                    if np.random.random() < 1.2:
+                        X_normal.append(calc_vec(hyp))
+                        y_normal.append(y)
+                    counters["median_conf_passed"] += 1
+                    if mpred_lev_dist == 0:
+                        counters["median_conf_passed_correct"] += 1
+                    else:
+                        counters["median_conf_lev_dist"] += mpred_lev_dist
 
-            print(len(all_hyps), correct_hyps, correct_median)
-            print(min_med_conf_passed, min_med_conf_passed_correct, min_med_conf_passed_correct / min_med_conf_passed)
-            print(min_conf_passed, min_conf_passed_correct, min_conf_passed_correct / min_conf_passed)
+                if min(hyp.history) >= th and min(hyp.best_rev) >= th:
+                    counters["min_conf_passed"] += 1
+                    if lev_dist == 0:
+                        counters["min_conf_rev_score_correct"] += min(hyp.best_rev)
+                        counters["min_conf_passed_correct"] += 1
+                    else:
+                        counters["min_conf_rev_score_incorrect"] += min(hyp.best_rev)
+                        counters["min_conf_lev_dist"] += lev_dist
+
+            print("Oracle", len(all_hyps), counters["correct"],
+                  f"{counters['correct'] * 100 / len(all_hyps):.2f}",
+                  f'{math.exp(total_conf_correct / counters["correct"])}',
+                  math.exp(min_correct_conf)
+                  )
+            print(len(all_hyps), counters["median_correct"], f"{counters['median_correct'] * 100 / len(all_hyps):.2f}")
+            print("MinConf", counters["min_conf_passed"],
+                  f'{counters["min_conf_passed_correct"] * 100 / counters["min_conf_passed"]:.2f}',
+                  counters["min_conf_lev_dist"] / (counters["min_conf_passed"] - counters["min_conf_passed_correct"]),
+                  "Corr. AVG Min: ", f'{math.exp(counters["min_conf_rev_score_correct"] / counters["min_conf_passed_correct"]):.6f} '
+                  "Incor. AVG Min: ", f'{math.exp(counters["min_conf_rev_score_incorrect"] / (counters["min_conf_passed"] - counters["min_conf_passed_correct"])):.6f} '
+                  )
+            print("MedianMinConf", counters["median_conf_passed"],
+                  f'{counters["median_conf_passed_correct"] * 100 / counters["median_conf_passed"]:.2f}',
+                  counters["median_conf_lev_dist"] / (counters["median_conf_passed"] - counters["median_conf_passed_correct"])
+                  )
+
+
+            clf = make_pipeline(StandardScaler(), SVC(gamma='auto'))
+            clf.fit(X_normal, y_normal)
+
+            for fname, hyp in all_hyps.items():
+                if min(hyp.history) >= th and min(hyp.best_rev) >= th and clf.predict(calc_vec(hyp).reshape(1, -1)) == 1:
+                    counters["svm_passed"] += 1
+                    lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
+                    if lev_dist == 0:
+                        counters["svm_passed_correct"] += 1
+                    else:
+                        counters["svm_lev_dist"] += lev_dist
+
+            print("SVM", counters["svm_passed"],
+                  f'{counters["svm_passed_correct"] * 100 / counters["svm_passed"]:.2f}',
+                  counters["svm_lev_dist"] / (counters["svm_passed"] - counters["svm_passed_correct"])
+                  )
+
+
             # def calc_min(th_pseudo_perc: float, exp: float = 1.0):
             #     th_min = math.log(th_pseudo_perc)
             #     min_conf_passed = 0
@@ -242,14 +309,28 @@ def main(gpu: int = -1):
             # print("MIN", "Passed: ", min_conf_passed, " Correct: ", min_conf_passed_correct, f"{min_conf_passed_correct * 100 / min_conf_passed:.2f}", min_conf_lev_sum / (min_conf_passed - min_conf_passed_correct))
             #
 
-
+            # labeled_indices, unlabeled_indices = get_splitted_indices(
+            #     full_train_data,
+            #     unlabeled_pct=0.85,
+            #     sorting_mode=1
+            # )
+            # labeled_data, unlabeled_data = full_train_data[labeled_indices], full_train_data[
+            #     unlabeled_indices]
+            #
+            # pseudo_labeling_batches = build_batches_from_samples(
+            #     unlabeled_data,
+            #     4
+            # )
+            #
+            # all_hyps = {}
+            #
             # for batch_raw in pseudo_labeling_batches:
             #     batch = collate_fn([batch_raw]).to(device=device)
             #     hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False)
             #     for i, hyp in enumerate(hyps):
             #         all_hyps[batch.img_bases[i]] = hyp
-
-            # torch.save(all_hyps, "hyps.pt")
+            #
+            # torch.save(all_hyps, "hyps_st_15.pt")
 
 
             # entries = extract_data_entries(archive, "2014", to_device=device)

@@ -21,6 +21,10 @@ class Hypothesis:
     all_r2l_scores: Union[FloatTensor, None] = None
     all_r2l_history: Union[List[FloatTensor], None] = None
 
+    best_rev: List[float]
+    all_l2r_rev_scores: Union[List[FloatTensor], None] = None
+    all_r2l_rev_scores: Union[List[FloatTensor], None] = None
+
     def __init__(
             self,
             seq_tensor: LongTensor,
@@ -33,7 +37,10 @@ class Hypothesis:
             all_l2r_history: Union[List[FloatTensor], None] = None,
             all_r2l_hyps: Union[List[LongTensor], None] = None,
             all_r2l_scores: Union[FloatTensor, None] = None,
-            all_r2l_history: Union[List[FloatTensor], None] = None
+            all_r2l_history: Union[List[FloatTensor], None] = None,
+            best_rev: Union[FloatTensor, None] = None,
+            all_l2r_rev_scores: Union[List[FloatTensor], None] = None,
+            all_r2l_rev_scores: Union[List[FloatTensor], None] = None,
     ) -> None:
         assert direction in {"l2r", "r2l"}
         raw_seq = seq_tensor.tolist()
@@ -60,6 +67,14 @@ class Hypothesis:
         self.all_r2l_hyps = all_r2l_hyps
         self.all_r2l_scores = all_r2l_scores
         self.all_r2l_history = all_r2l_history
+
+        if best_rev is not None:
+            self.best_rev = best_rev.tolist()
+        else:
+            self.best_rev = []
+
+        self.all_l2r_rev_scores = all_l2r_rev_scores
+        self.all_r2l_rev_scores = all_r2l_rev_scores
 
     def __len__(self):
         if len(self.seq) != 0:
