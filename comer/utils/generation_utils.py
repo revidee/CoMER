@@ -430,7 +430,7 @@ class DecodeModel(pl.LightningModule):
 
         hyps_l2r_len = len(hyps_l2r)
         hyps_rl2_len = len(hyps_r2l)
-        if scoring_run and bi_dir and (hyps_rl2_len + hyps_rl2_len) > 0:
+        if scoring_run and bi_dir and (hyps_l2r_len + hyps_rl2_len) > 0:
             # compute the final score, by using the reversed sequence as target/out
             # and adding a custom loss to the score.
             # thus, we re-score the hyps by using the opposite direction as target
