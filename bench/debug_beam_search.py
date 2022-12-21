@@ -57,7 +57,7 @@ def main(gpu: int = -1):
             full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train", to_device=device)
             oracle = Oracle(full_train_data)
 
-            th = math.log(0.995)
+            th = math.log(0.9959)
 
             all_hyps: Dict[str, Hypothesis] = torch.load("../hyps_st_15.pt", map_location=torch.device('cpu'))
 
@@ -136,22 +136,22 @@ def main(gpu: int = -1):
             min_correct_conf = float('Inf')
 
             def calc_vec(hyp: Hypothesis):
-                # token_vec = np.zeros(vocab.__len__() + 1)
-                # total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
-                # token_vec[vocab.__len__()] = total
-                # for idx, token in enumerate(hyp.seq):
-                #     token_vec[token] += hyp.history[idx] * 100 * tota
+                token_vec = np.zeros(vocab.__len__() + 1)
+                total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
+                token_vec[vocab.__len__()] = total
+                for idx, token in enumerate(hyp.seq):
+                    token_vec[token] += hyp.history[idx] * 100 * total
 
                 # token_vec = np.zeros(400)
                 # for idx, token in enumerate(hyp.seq):
                 #     token_vec[idx] = token
                 #     token_vec[200 + idx] = hyp.history[idx]
 
-                token_vec = np.zeros(vocab.__len__() * 2)
-                total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
-                for idx, token in enumerate(hyp.seq):
-                    token_vec[token] += hyp.history[idx] * 100 * total
-                    token_vec[vocab.__len__() + token] += hyp.best_rev[idx] * 100 * total
+                # token_vec = np.zeros(vocab.__len__() * 2)
+                # total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
+                # for idx, token in enumerate(hyp.seq):
+                #     token_vec[token] += hyp.history[idx] * 100 * total
+                #     token_vec[vocab.__len__() + token] += hyp.best_rev[idx] * 100 * total
                 return token_vec
 
             X_normal = []
@@ -177,9 +177,6 @@ def main(gpu: int = -1):
                     counters["median_correct"] += 1
 
                 if min(mhistory) >= th:
-                    if np.random.random() < 1.2:
-                        X_normal.append(calc_vec(hyp))
-                        y_normal.append(y)
                     counters["median_conf_passed"] += 1
                     if mpred_lev_dist == 0:
                         counters["median_conf_passed_correct"] += 1
@@ -187,12 +184,22 @@ def main(gpu: int = -1):
                         counters["median_conf_lev_dist"] += mpred_lev_dist
 
                 if min(hyp.history) >= th and min(hyp.best_rev) >= th:
+                    counters["min_biconf_passed"] += 1
+                    if lev_dist == 0:
+                        counters["min_biconf_rev_score_correct"] += min(hyp.best_rev)
+                        counters["min_biconf_passed_correct"] += 1
+                    else:
+                        counters["min_biconf_rev_score_incorrect"] += min(hyp.best_rev)
+                        counters["min_biconf_lev_dist"] += lev_dist
+
+                if min(hyp.history) >= th:
+                    if np.random.random() < 0.1:
+                        X_normal.append(calc_vec(hyp))
+                        y_normal.append(y)
                     counters["min_conf_passed"] += 1
                     if lev_dist == 0:
-                        counters["min_conf_rev_score_correct"] += min(hyp.best_rev)
                         counters["min_conf_passed_correct"] += 1
                     else:
-                        counters["min_conf_rev_score_incorrect"] += min(hyp.best_rev)
                         counters["min_conf_lev_dist"] += lev_dist
 
             print("Oracle", len(all_hyps), counters["correct"],
@@ -204,8 +211,12 @@ def main(gpu: int = -1):
             print("MinConf", counters["min_conf_passed"],
                   f'{counters["min_conf_passed_correct"] * 100 / counters["min_conf_passed"]:.2f}',
                   counters["min_conf_lev_dist"] / (counters["min_conf_passed"] - counters["min_conf_passed_correct"]),
-                  "Corr. AVG Min: ", f'{math.exp(counters["min_conf_rev_score_correct"] / counters["min_conf_passed_correct"]):.6f} '
-                  "Incor. AVG Min: ", f'{math.exp(counters["min_conf_rev_score_incorrect"] / (counters["min_conf_passed"] - counters["min_conf_passed_correct"])):.6f} '
+                  )
+            print("MinBiConf", counters["min_biconf_passed"],
+                  f'{counters["min_biconf_passed_correct"] * 100 / counters["min_biconf_passed"]:.2f}',
+                  counters["min_biconf_lev_dist"] / (counters["min_biconf_passed"] - counters["min_biconf_passed_correct"]),
+                  "Corr. AVG Min (R): ", f'{math.exp(counters["min_biconf_rev_score_correct"] / counters["min_biconf_passed_correct"]):.6f} '
+                                     "Incor. AVG Min (R): ", f'{math.exp(counters["min_biconf_rev_score_incorrect"] / (counters["min_biconf_passed"] - counters["min_biconf_passed_correct"])):.6f} '
                   )
             print("MedianMinConf", counters["median_conf_passed"],
                   f'{counters["median_conf_passed_correct"] * 100 / counters["median_conf_passed"]:.2f}',
@@ -217,7 +228,7 @@ def main(gpu: int = -1):
             clf.fit(X_normal, y_normal)
 
             for fname, hyp in all_hyps.items():
-                if min(hyp.history) >= th and min(hyp.best_rev) >= th and clf.predict(calc_vec(hyp).reshape(1, -1)) == 1:
+                if min(hyp.history) >= th and clf.predict(calc_vec(hyp).reshape(1, -1)) == 1:
                     counters["svm_passed"] += 1
                     lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
                     if lev_dist == 0:
@@ -225,9 +236,21 @@ def main(gpu: int = -1):
                     else:
                         counters["svm_lev_dist"] += lev_dist
 
-            print("SVM", counters["svm_passed"],
+                    if min(hyp.best_rev) >= th:
+                        counters["svm_bi_passed"] += 1
+                        lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
+                        if lev_dist == 0:
+                            counters["svm_bi_passed_correct"] += 1
+                        else:
+                            counters["svm_bi_lev_dist"] += lev_dist
+
+            print("SVM (MIN)", counters["svm_passed"],
                   f'{counters["svm_passed_correct"] * 100 / counters["svm_passed"]:.2f}',
                   counters["svm_lev_dist"] / (counters["svm_passed"] - counters["svm_passed_correct"])
+                  )
+            print("SVM (BIMIN)", counters["svm_bi_passed"],
+                  f'{counters["svm_bi_passed_correct"] * 100 / counters["svm_bi_passed"]:.2f}',
+                  counters["svm_bi_lev_dist"] / (counters["svm_bi_passed"] - counters["svm_bi_passed_correct"])
                   )
 
 
