@@ -30,11 +30,21 @@ while [[ $# -gt 0 ]]; do
       shift # past argument
       shift # past value
       ;;
+    -s|--seed)
+      seed="$2"
+      shift # past argument
+      shift # past value
+      ;;
     -p|--pandoc)
       pandoc_path="$2"
       shift # past argument
       shift # past value
-          ;;
+      ;;
+    -aug|--augmentation)
+      aug="$2"
+      shift # past argument
+      shift # past value
+      ;;
     -*|--*)
       echo "Unknown option $1"
       exit 1
@@ -61,6 +71,16 @@ if [ -z "$gpu" ]; then
   gpu='0'
 fi
 
+if [ -z "$seed" ]; then
+  seed='7'
+fi
+
+if [ -z "$aug" ]; then
+  aug=""
+else
+  aug="-aug "$aug""
+fi
+
 single_num_regex='^[0-9]$'
 if ! [[ $gpu =~ $single_num_regex ]] ; then
    echo "fatal: given gpu index is not a single number (expected a device id, eg for cuda:0, \"0\")." >&2;
@@ -76,15 +96,16 @@ else
   export PANDOC_EXEC="$pandoc_path"
 fi
 
-
+parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 # install lgeval and tex2symlg (in CoMER folder)
-export LgEvalDir=$(pwd)/lgeval
-export Convert2SymLGDir=$(pwd)/convert2symLG
+export LgEvalDir=$parent_path/lgeval
+export Convert2SymLGDir=$parent_path/convert2symLG
 export PATH=$PATH:$LgEvalDir/bin:$Convert2SymLGDir
 
 for year in '2014' '2016' '2019'
 do
     echo '****************' start evaluating CROHME $year '****************'
-    bash scripts/test/eval.sh -cp $checkpoint_path -o $out_dir -d $data_dir -y $year -gpu $gpu
+    bash $parent_path/scripts/test/eval.sh -cp $checkpoint_path -o $out_dir -d $data_dir -y $year -gpu $gpu -s $seed $aug
     echo
 done
+

@@ -30,7 +30,7 @@ class BatchedBeamSearch:
                  relative_local_pruning_threshold: float = 2,
                  relative_local_pruning_offset: float = .45,
                  length_penalty: float = 1.0,
-                 min_normalized_pseudo_probabilty: float = 0.3,
+                 min_normalized_pseudo_probabilty: float = invalid_score,
                  temperature: float = 1.0,
                  debug: bool = False
                  ):

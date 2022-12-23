@@ -7,22 +7,25 @@ from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.modules import CoMERSupervised
 from pytorch_lightning import Trainer, seed_everything
 
-seed_everything(7)
+
 
 
 def main(
     cp: str,
     year: str = '2014',
     gpu: int = 0,
+    aug: str = "weak",
+    seed: int = 7
 ):
+    seed_everything(seed)
     # generate output latex in result.zip
     trainer = Trainer(logger=False, accelerator='gpu', devices=[gpu])
 
-    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=4)
+    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug)
 
     device = torch.device(f'cuda:{gpu}')
 
-    model = CoMERSupervised.load_from_checkpoint(cp).to(device).eval()
+    model = CoMERSupervised.load_from_checkpoint(cp, test_suffix=f"{gpu}").to(device).eval()
 
     trainer.test(model, datamodule=dm)
 

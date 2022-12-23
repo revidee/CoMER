@@ -87,8 +87,7 @@ class CoMERFixMatch(CoMERSelfTraining):
                 pseudo_labels.extend(
                     [
                         vocab.indices2words(h.seq) if (len(h.history) > 0) and (
-                                min(h.history) >= self.pseudo_labeling_threshold
-                                and min(h.best_rev) >= self.pseudo_labeling_threshold
+                                (h.score / 2) >= self.pseudo_labeling_threshold
                         ) else [] for h in self.approximate_joint_search(batch.imgs, batch.mask)]
                 )
 

@@ -22,6 +22,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             train_aug: str = "weak",
             unlabeled_pct: float = 0.0,
             train_sorting: int = 1,
+            test_aug: str = ""
     ) -> None:
         super().__init__()
         assert isinstance(test_year, str)
@@ -31,6 +32,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
         self.eval_batch_size = eval_batch_size
         self.num_workers = num_workers
         self.train_aug = train_aug
+        self.test_aug = test_aug
         self.unlabeled_pct = unlabeled_pct
         self.train_sorting = train_sorting
 
@@ -52,8 +54,8 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             if stage == "test" or stage is None:
                 self.test_dataset = CROHMEDataset(
                     build_dataset(archive, self.test_year, self.eval_batch_size)[0],
-                    "",
-                    "",
+                    self.test_aug,
+                    self.test_aug,
                 )
 
     def train_dataloader(self):

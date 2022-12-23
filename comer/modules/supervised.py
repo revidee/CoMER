@@ -35,6 +35,7 @@ class CoMERSupervised(pl.LightningModule):
         # training
         learning_rate: float,
         patience: int,
+        test_suffix: str = "",
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -119,13 +120,13 @@ class CoMERSupervised(pl.LightningModule):
         exprate = self.exprate_recorder.compute()
         print(f"Validation ExpRate: {exprate}")
 
-        with zipfile.ZipFile("result.zip", "w") as zip_f:
+        with zipfile.ZipFile(f"result{self.hparams.test_suffix}.zip", "w") as zip_f:
             for img_bases, preds, _, _ in test_outputs:
                 for img_base, pred in zip(img_bases, preds):
                     content = f"%{img_base}\n${pred}$".encode()
                     with zip_f.open(f"{img_base}.txt", "w") as f:
                         f.write(content)
-        with open("stats.txt", "w") as file:
+        with open(f"stats{self.hparams.test_suffix}.txt", "w") as file:
             for img_bases, preds, lens, scores in test_outputs:
                 for img_base, pred, length, score in zip(img_bases, preds, lens, scores):
                     file.write(f"{img_base},{pred},{length},{score}\n")

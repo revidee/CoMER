@@ -17,7 +17,7 @@ if __name__ == '__main__':
     trainer = UnlabeledValidationExtraStepTrainer(
         unlabeled_val_loop=True,
         accelerator='gpu',
-        devices=[0, 1],
+        devices=[6, 7],
         strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
         max_epochs=300,
         deterministic=True,
@@ -34,24 +34,25 @@ if __name__ == '__main__':
         ],
         precision=32
     )
-    dm = CROHMEFixMatchDatamodule(
+    dm = CROHMEFixMatchInterleavedDatamodule(
         test_year='2019',
         eval_batch_size=4,
         zipfile_path='data.zip',
         train_batch_size=8,
         num_workers=5,
-        unlabeled_pct=0.65,
+        unlabeled_pct=0.35,
         train_sorting=1,
         unlabeled_strong_aug="weak",
         unlabeled_weak_aug=""
     )
 
     model: CoMERFixMatch = CoMERFixMatchInterleaved.load_from_checkpoint(
-        './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt',
+        './lightning_logs/version_23/checkpoints/epoch=265-step=263340-val_ExpRate=0.6147.ckpt',
         learning_rate=0.0008,
         patience=20,
-        pseudo_labeling_threshold=0.9959,
-        lambda_u=1.0
+        pseudo_labeling_threshold=0.64618,
+        lambda_u=1.0,
+        temperature=3.0
     )
 
     trainer.fit(model, dm)

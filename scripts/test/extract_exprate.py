@@ -1,12 +1,10 @@
 from jsonargparse import CLI
 
-fpath = "Results_pred_symlg/Summary.txt"
 
-
-def main(err: int):
+def main(err: int, path: str = "./Results_pred_symlg/Summary.txt"):
     struct_ln = None
     exprate_ln = None
-    with open(fpath, "r") as f:
+    with open(path, "r") as f:
         for ln in f.readlines():
             if ln.startswith(" Structure"):
                 struct_ln = ln

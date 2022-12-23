@@ -39,6 +39,16 @@ while [[ $# -gt 0 ]]; do
       shift # past argument
       shift # past value
       ;;
+    -aug|--augmentation)
+        aug="$2"
+        shift # past argument
+        shift # past value
+        ;;
+    -s|--seed)
+      seed="$2"
+      shift # past argument
+      shift # past value
+      ;;
     -*|--*)
       echo "Unknown option $1"
       exit 1
@@ -66,6 +76,12 @@ if [ -z "$out_dir" ]; then
   out_dir='./eval_out'
 fi
 
+if [ -z "$aug" ]; then
+  aug=""
+else
+  aug="--aug "$aug""
+fi
+
 if [ -z "$data_dir" ]; then
   data_dir='./data'
 fi
@@ -80,18 +96,24 @@ if ! [[ $gpu =~ $single_num_regex ]] ; then
    exit 1
 fi
 
+data_dir=$(readlink -f $data_dir)
+out_dir=$(readlink -f $out_dir)
+chk_point_path=$(readlink -f $chk_point_path)
 
 # clean out
 rm -rf $out_dir/test_temp/
-rm -rf Results_pred_symlg/
+rm -rf $out_dir/Results_pred_symlg/
 
 # generate predictions
-python -m scripts.test.test $chk_point_path --year $test_year --gpu $gpu
+python -m scripts.test.test $chk_point_path --year $test_year --gpu $gpu --seed $seed $aug
 
 mkdir -p $out_dir/test_temp/
-mv result.zip $out_dir/$test_year.zip
-mv stats.txt $out_dir/"$test_year"_stats.txt
+mv result$gpu.zip $out_dir/$test_year.zip
+mv stats$gpu.txt $out_dir/"$test_year"_stats.txt
 unzip -q $out_dir/$test_year.zip -d $out_dir/test_temp/result
+
+dir=$(pwd)
+cd $out_dir
 
 # convert tex to symlg
 tex2symlg $out_dir/test_temp/result $out_dir/test_temp/pred_symlg
@@ -103,5 +125,14 @@ evaluate $out_dir/test_temp/pred_symlg $data_dir/$test_year/symLg >/dev/null 2>&
 cp ./Results_pred_symlg/Summary.txt $out_dir/"$test_year"_Summary.txt
 cp ./Results_pred_symlg/FileMetrics.csv $out_dir/"$test_year"_FileMetrics.csv
 
+abs_results=$(readlink -f ./Results_pred_symlg/Summary.txt)
+
+cd $dir
+
 # extract evaluation result and save to target folder
-python -m scripts.test.extract_exprate 4 >&1 | tee $out_dir/$test_year.txt
+python -m scripts.test.extract_exprate 4 --path $abs_results >&1 | tee $out_dir/$test_year.txt
+
+rm -rf $out_dir/Results_pred_symlg
+rm -rf $out_dir/test_temp/
+
+
