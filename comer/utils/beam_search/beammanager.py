@@ -89,7 +89,6 @@ class BeamManager:
         """
         curr_normalizing_fac = (self.curr_len ** self.length_penalty)
 
-        print(raw_logits.size())
         next_active_beam_indices = []
         for i, logit_history in enumerate(summed_logits):
             current_token_logit = logit_history[-1]
