@@ -134,10 +134,10 @@ class CoMERSupervised(pl.LightningModule):
 
 
     def approximate_joint_search(
-        self, img: FloatTensor, mask: LongTensor, use_new: bool = True, debug=False
+        self, img: FloatTensor, mask: LongTensor, use_new: bool = True, save_logits: bool = False, debug=False
     ) -> List[Hypothesis]:
         if use_new:
-            return self.comer_model.new_beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True, debug=debug)
+            return self.comer_model.new_beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True, save_logits=save_logits, debug=debug)
         return self.comer_model.beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True, debug=debug)
 
     def configure_optimizers(self):

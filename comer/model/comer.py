@@ -114,6 +114,7 @@ class CoMER(pl.LightningModule):
             bi_dir: bool = True,
             scoring_run: bool = True,
             debug: bool = False,
+            save_logits: bool = False,
             **kwargs,
     ) -> List[Hypothesis]:
         """run bi-direction beam search for given img
@@ -134,5 +135,5 @@ class CoMER(pl.LightningModule):
         feature, mask = self.encoder(img, img_mask)  # [b, t, d]
         return self.decoder.new_beam_search(
             feature, mask, beam_size, max_len, alpha, early_stopping,
-            temperature, bi_dir=bi_dir, scoring_run=scoring_run, debug=debug
+            temperature, bi_dir=bi_dir, scoring_run=scoring_run, debug=debug, save_logits=save_logits
         )

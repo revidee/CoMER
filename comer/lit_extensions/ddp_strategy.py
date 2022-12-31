@@ -14,3 +14,9 @@ class DDPUnlabeledStrategy(DDPStrategy):
             # print(self.lightning_module,
             #       [func for func in dir(self.lightning_module) if callable(getattr(self.lightning_module, func))])
             return self.lightning_module.unlabeled_full(*args, **kwargs)
+
+    def validation_dataloader_end(self, *args, **kwargs):
+        with self.precision_plugin.val_step_context():
+            # print(self.lightning_module,
+            #       [func for func in dir(self.lightning_module) if callable(getattr(self.lightning_module, func))])
+            return self.lightning_module.validation_dataloader_end(*args, **kwargs)

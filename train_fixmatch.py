@@ -10,6 +10,8 @@ from comer.modules import CoMERSelfTraining
 from comer.modules.fixmatch import CoMERFixMatch
 from comer.modules.fixmatch_inter_oracle import CoMERFixMatchOracleInterleaved
 from comer.modules.fixmatch_interleaved import CoMERFixMatchInterleaved
+from comer.modules.fixmatch_sorted_fixed_pct import CoMERFixMatchInterleavedFixedPct
+from comer.modules.fixmatch_temp_scale import CoMERFixMatchInterleavedTemperatureScaling
 
 if __name__ == '__main__':
     seed_everything(7)
@@ -32,7 +34,8 @@ if __name__ == '__main__':
                             auto_insert_metric_name=False
                             ),
         ],
-        precision=32
+        precision=32,
+        fast_dev_run=True
     )
     dm = CROHMEFixMatchInterleavedDatamodule(
         test_year='2019',
@@ -40,17 +43,18 @@ if __name__ == '__main__':
         zipfile_path='data.zip',
         train_batch_size=8,
         num_workers=5,
-        unlabeled_pct=0.35,
+        unlabeled_pct=0.65,
         train_sorting=1,
         unlabeled_strong_aug="weak",
         unlabeled_weak_aug=""
     )
 
-    model: CoMERFixMatch = CoMERFixMatchInterleaved.load_from_checkpoint(
-        './lightning_logs/version_23/checkpoints/epoch=265-step=263340-val_ExpRate=0.6147.ckpt',
+    model: CoMERFixMatch = CoMERFixMatchInterleavedTemperatureScaling.load_from_checkpoint(
+        './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt',
+        strict=False,
         learning_rate=0.0008,
         patience=20,
-        pseudo_labeling_threshold=0.64618,
+        pseudo_labeling_threshold=0.62,
         lambda_u=1.0,
         temperature=3.0
     )

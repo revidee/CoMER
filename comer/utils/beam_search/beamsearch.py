@@ -32,7 +32,8 @@ class BatchedBeamSearch:
                  length_penalty: float = 1.0,
                  min_normalized_pseudo_probabilty: float = invalid_score,
                  temperature: float = 1.0,
-                 debug: bool = False
+                 debug: bool = False,
+                 save_logits: bool = False
                  ):
         self.max_beams = max_beams
         self.bi_dir = bi_dir
@@ -40,6 +41,7 @@ class BatchedBeamSearch:
         self.device = device
         self.max_len = max_len
         self.temperature = temperature
+        self.save_logits = save_logits
         self.empty_tensor = torch.empty((0,), device=device)
 
         self.length_penalty = length_penalty
@@ -144,14 +146,17 @@ class BatchedBeamSearch:
             )
             if self.done:
                 break
+            unsharpened = decode_step(self.next_src, self.next_src_mask, self.next_input_ids)
             logits = F.log_softmax(
                 #   -> log-probabilities for all vocab-entries for each active beam
                 #   -> e.g. current active beams [[SOS, "1"]] (1 active beam)
                 #           result of F.log_softmax would then be of size [1, vocab-len]
                 #           to describe the log-likelihood of each "token"
-                decode_step(self.next_src, self.next_src_mask, self.next_input_ids)[:, -1, :] / self.temperature,
+                unsharpened[:, -1, :] / self.temperature,
                 dim=-1
             )
+            if not self.save_logits:
+                unsharpened = None
 
             # Perform Invalid Sequence, Absolute, Relative, Relative Local Pruning, Maximum Candidates per Node
             #   c.f. https://arxiv.org/abs/1702.01806
@@ -301,6 +306,7 @@ class BatchedBeamSearch:
                 bm_offsets[:-1], device=self.device
             ).unsqueeze(-1).expand((-1, min_total_beams_or_max_beams))
 
+
             # use it to get & expand the sequence of the active beam with the best candidates.
             next_sequences = torch.cat(
                 (
@@ -331,12 +337,16 @@ class BatchedBeamSearch:
                 # print(self.next_summed_logs_history[originating_active_beam_global])
             # print(next_beam_summed_logits)
             # print("----")
+            next_logits = None
+            if self.save_logits:
+                next_logits = unsharpened[originating_active_beam_global]
 
             # Update the cache of each beam manager, finish off hyps, check if done, gather the next active beams.
             for i, bm_ref in enumerate(self.next_bm_refs):
                 beam_managers[bm_ref].update(
                     next_beam_summed_logits_history[i],
-                    next_sequences[i]
+                    next_sequences[i],
+                    raw_logits=None if not self.save_logits else next_logits[i]
                 )
 
         # Now, each BeamManager has finished, either by reaching max_len or by having no active beams.
@@ -345,13 +355,16 @@ class BatchedBeamSearch:
         hyps_l2r: List[List[LongTensor]] = [[] for _ in itertools.repeat(None, batch_size)]
         history_l2r: List[List[LongTensor]] = [[] for _ in itertools.repeat(None, batch_size)]
         scores_l2r: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
+        raw_logits_l2r: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
         hyps_r2l: List[List[LongTensor]] = [[]]
         history_r2l: List[List[LongTensor]] = [[]]
         scores_r2l: List[List[Tensor]] = [[]]
+        raw_logits_r2l: List[List[Tensor]] = [[]]
         if self.bi_dir:
             hyps_r2l = [[] for _ in itertools.repeat(None, batch_size)]
             history_r2l = [[] for _ in itertools.repeat(None, batch_size)]
             scores_r2l = [[] for _ in itertools.repeat(None, batch_size)]
+            raw_logits_r2l = [[] for _ in itertools.repeat(None, batch_size)]
 
         repeats_l2r = torch.zeros((src.shape[0],), dtype=torch.int, device=self.device)
         repeats_r2l = torch.zeros((src.shape[0],), dtype=torch.int, device=self.device)
@@ -359,19 +372,34 @@ class BatchedBeamSearch:
             best_hyps = bm.get_best_l2r_finalized()
             if bm.is_direction_l2r:
                 repeats_l2r[bm.src_idx] += len(best_hyps)
-                for (score, seq, history) in best_hyps:
+                for (score, seq, history, raw_logits) in best_hyps:
                     hyps_l2r[bm.src_idx].append(seq)
                     history_l2r[bm.src_idx].append(history)
                     scores_l2r[bm.src_idx].append(score.unsqueeze(0))
+                    if self.save_logits:
+                        raw_logits_l2r[bm.src_idx].append(raw_logits)
             else:
                 repeats_r2l[bm.src_idx] += len(best_hyps)
-                for (score, seq, history) in best_hyps:
+                for (score, seq, history, raw_logits) in best_hyps:
                     hyps_r2l[bm.src_idx].append(seq)
                     history_r2l[bm.src_idx].append(history)
                     scores_r2l[bm.src_idx].append(score.unsqueeze(0))
+                    if self.save_logits:
+                        raw_logits_r2l[bm.src_idx].append(raw_logits)
         # flatten to a single list containing all hyps
         flattened_scores_l2r = list(itertools.chain.from_iterable(scores_l2r))
         flattened_scores_r2l = list(itertools.chain.from_iterable(scores_r2l))
+        if self.save_logits:
+            return list(itertools.chain.from_iterable(hyps_l2r)), \
+                list(itertools.chain.from_iterable(history_l2r)), \
+                torch.cat(flattened_scores_l2r, dim=0) if len(flattened_scores_l2r) > 0 else self.empty_tensor, \
+                repeats_l2r, \
+                list(itertools.chain.from_iterable(raw_logits_l2r)), \
+                list(itertools.chain.from_iterable(hyps_r2l)), \
+                list(itertools.chain.from_iterable(history_r2l)), \
+                torch.cat(flattened_scores_r2l, dim=0) if len(flattened_scores_r2l) > 0 else self.empty_tensor, \
+                repeats_r2l, \
+                list(itertools.chain.from_iterable(raw_logits_r2l))
         return list(itertools.chain.from_iterable(hyps_l2r)), \
             list(itertools.chain.from_iterable(history_l2r)), \
             torch.cat(flattened_scores_l2r, dim=0) if len(flattened_scores_l2r) > 0 else self.empty_tensor, \

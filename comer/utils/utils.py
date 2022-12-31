@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from comer.datamodules.crohme import vocab
 from einops import rearrange
 from torch import LongTensor, FloatTensor
+from torch import linalg as LA
 from torchmetrics import Metric
 
 
@@ -41,6 +42,7 @@ class Hypothesis:
             best_rev: Union[FloatTensor, None] = None,
             all_l2r_rev_scores: Union[List[FloatTensor], None] = None,
             all_r2l_rev_scores: Union[List[FloatTensor], None] = None,
+            raw_logits: Union[FloatTensor, None] = None
     ) -> None:
         assert direction in {"l2r", "r2l"}
         raw_seq = seq_tensor.tolist()
@@ -75,6 +77,8 @@ class Hypothesis:
 
         self.all_l2r_rev_scores = all_l2r_rev_scores
         self.all_r2l_rev_scores = all_r2l_rev_scores
+
+        self.raw_logits = raw_logits
 
     def __len__(self):
         if len(self.seq) != 0:
@@ -128,6 +132,29 @@ def ce_loss(
         torch.Tensor: loss value
     """
     flat_hat = rearrange(output_hat, "b l e -> (b l) e")
+    flat = rearrange(output, "b l -> (b l)")
+    loss = F.cross_entropy(flat_hat, flat, ignore_index=ignore_idx, reduction=reduction)
+    return loss
+
+def ce_logitnorm_loss(
+        output_hat: torch.Tensor,
+        output: torch.Tensor,
+        temperature: torch.Tensor,
+        ignore_idx: int = vocab.PAD_IDX,
+        reduction: str = "mean",
+) -> torch.Tensor:
+    """comput cross-entropy loss with logit normalization from https://arxiv.org/abs/2205.09310
+
+    Args:
+        output_hat (torch.Tensor): [batch, len, e]
+        output (torch.Tensor): [batch, len]
+        ignore_idx (int):
+
+    Returns:
+        torch.Tensor: loss value
+    """
+    mod_hat = output_hat / (temperature * LA.vector_norm(output_hat, dim=-1, keepdim=True))
+    flat_hat = rearrange(mod_hat, "b l e -> (b l) e")
     flat = rearrange(output, "b l -> (b l)")
     loss = F.cross_entropy(flat_hat, flat, ignore_index=ignore_idx, reduction=reduction)
     return loss

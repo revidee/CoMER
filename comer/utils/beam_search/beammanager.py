@@ -56,7 +56,7 @@ class BeamManager:
         self.active_beams_summed_logits = torch.empty((0, 0), dtype=torch.long, device=self.device)
 
         # List of finished hypothesis as tuple (score, sequence, summed logit history)
-        self.best_hyps: List[Tuple[Tensor, Tensor, FloatTensor]] = []
+        self.best_hyps: List[Tuple[Tensor, Tensor, FloatTensor, Union[FloatTensor, None]]] = []
         self.worst_score: Tensor = invalid_score
         self.done = False
         self.debug = debug
@@ -64,7 +64,7 @@ class BeamManager:
     def __str__(self):
         return f"beam_manager[{self.src_idx}]({'l2r' if self.is_direction_l2r else 'r2l'})"
 
-    def update(self, summed_logits: FloatTensor, sequences: LongTensor):
+    def update(self, summed_logits: FloatTensor, sequences: LongTensor, raw_logits: FloatTensor = None):
         """
             Iterates over the summed logits and sequences of all possible & best candidates.
             However, it stops as soon as it encounters an "-Inf" score which indicates a pruned candidate.
@@ -89,6 +89,7 @@ class BeamManager:
         """
         curr_normalizing_fac = (self.curr_len ** self.length_penalty)
 
+        print(raw_logits.size())
         next_active_beam_indices = []
         for i, logit_history in enumerate(summed_logits):
             current_token_logit = logit_history[-1]
@@ -99,13 +100,13 @@ class BeamManager:
             # get the actual token and construct the full sequence
             if sequences[i][sequences.size(1) - 1] == self.end_token_tensor:
                 if self.debug:
-                    print("fin", vocab.indices2words(sequences[i].tolist()), val / curr_normalizing_fac)
+                    print("fin", vocab.indices2words(sequences[i].tolist()), current_token_logit / curr_normalizing_fac)
                 # if the beam has ended, cache it as best or drop it immediately
                 # self.finish_single(normalized_log_probs[originating_beam_idx][originating_beam_topk_idx], next_sequence)
-                self.finish_single(current_token_logit / curr_normalizing_fac, sequences[i], logit_history)
+                self.finish_single(current_token_logit / curr_normalizing_fac, sequences[i], logit_history, raw_logits[i] if raw_logits is not None else None)
             else:
                 if self.debug:
-                    print("add beam", vocab.indices2words(sequences[i].tolist()), val)
+                    print("add beam", vocab.indices2words(sequences[i].tolist()), current_token_logit)
                 # Add sequence with it's summed log-probability to the next active beams
                 next_active_beam_indices.append(i)
         if self.debug:
@@ -130,15 +131,15 @@ class BeamManager:
 
         self.curr_len = self.curr_len + 1
 
-    def finish_single(self, score: Tensor, sequence: Tensor, history: FloatTensor):
+    def finish_single(self, score: Tensor, sequence: Tensor, history: FloatTensor, raw_logits: FloatTensor = None):
         best_hyp_len = len(self.best_hyps)
         if best_hyp_len == 0:
-            self.best_hyps.append((score, sequence, history))
+            self.best_hyps.append((score, sequence, history, raw_logits))
             self.worst_score = score
             return
         # find place to insert
         last_idx_better_than = 0
-        for i, (best_hyp_score, _, _) in enumerate(self.best_hyps):
+        for i, (best_hyp_score, _, _, _) in enumerate(self.best_hyps):
             if best_hyp_score >= score:
                 last_idx_better_than = i
             else:
@@ -147,28 +148,28 @@ class BeamManager:
         last_idx_better_than += 1
 
         if best_hyp_len < self.save_best_k:
-            self.best_hyps.insert(last_idx_better_than, (score, sequence, history))
+            self.best_hyps.insert(last_idx_better_than, (score, sequence, history, raw_logits))
             self.worst_score = self.best_hyps[-1][0]
             return
         # check if we have to replace it
         if last_idx_better_than != best_hyp_len and score >= self.best_hyps[last_idx_better_than][0]:
-            self.best_hyps[last_idx_better_than] = (score, sequence, history)
+            self.best_hyps[last_idx_better_than] = (score, sequence, history, raw_logits)
             self.worst_score = self.best_hyps[-1][0]
 
-    def get_best_l2r_finalized(self) -> Union[None, List[Tuple[Tensor, Tensor, Tensor]]]:
+    def get_best_l2r_finalized(self) -> Union[None, List[Tuple[Tensor, Tensor, Tensor, Union[Tensor, None]]]]:
         """
             Returns the best hypothesis found and removes the SOS and EOS token
         """
         if len(self.best_hyps) == 0:
             return self.best_hyps
         output = []
-        for (score, seq, history) in self.best_hyps:
+        for (score, seq, history, raw_logs) in self.best_hyps:
             summed_history = history[:-1]
             shifted_history = torch.zeros((summed_history.size(0)), device=self.device)
             shifted_history[1:] = summed_history[:-1]
             single_logits = summed_history - shifted_history
             if self.is_direction_l2r:
-                output.append((score, seq[1:-1], single_logits))
+                output.append((score, seq[1:-1], single_logits, raw_logs))
             else:
-                output.append((score, torch.flip(seq[1:-1], dims=[0]), torch.flip(single_logits, dims=[0])))
+                output.append((score, torch.flip(seq[1:-1], dims=[0]), torch.flip(single_logits, dims=[0]), raw_logs))
         return output

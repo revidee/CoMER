@@ -6,6 +6,7 @@ from deprecate.utils import void
 from pytorch_lightning.loops import EvaluationLoop
 
 from .eval_epoch_loop import EvaluationWithUnlabeledEpochLoop
+from .eval_epoch_loop_end_hook import EvaluationWithRunEndHook
 
 
 class EvaluationWithUnlabeledLoop(EvaluationLoop):
@@ -14,6 +15,7 @@ class EvaluationWithUnlabeledLoop(EvaluationLoop):
     def __init__(self, verbose: bool = True) -> None:
         super().__init__(verbose=verbose)
         self.unlabeled_loop = EvaluationWithUnlabeledEpochLoop(self.get_self)
+        self.epoch_loop = EvaluationWithRunEndHook()
 
     def get_self(self):
         return self

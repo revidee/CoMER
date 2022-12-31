@@ -394,7 +394,8 @@ class DecodeModel(pl.LightningModule):
             temperature: float,
             bi_dir: bool = True,
             scoring_run: bool = True,
-            debug: bool = False
+            debug: bool = False,
+            save_logits: bool = False
     ) -> List[Hypothesis]:
         """run beam search to decode
         Parameters
@@ -423,10 +424,15 @@ class DecodeModel(pl.LightningModule):
             bi_dir,
             temperature=temperature,
             find_top_k=beam_size * 2,
-            debug=debug
+            debug=debug,
+            save_logits=save_logits
         )
-        hyps_l2r, history_l2r, scores_l2r, repeats_l2r, \
-            hyps_r2l, history_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
+        if save_logits:
+            hyps_l2r, history_l2r, scores_l2r, repeats_l2r, raw_logits_l2r, \
+                hyps_r2l, history_r2l, scores_r2l, repeats_r2l, raw_logits_r2l = beamsearch.predict(self, src, src_mask)
+        else:
+            hyps_l2r, history_l2r, scores_l2r, repeats_l2r, \
+                hyps_r2l, history_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
 
         hyps_l2r_len = len(hyps_l2r)
         hyps_rl2_len = len(hyps_r2l)
@@ -551,6 +557,7 @@ class DecodeModel(pl.LightningModule):
                                    best_rev=l2r_rev[curr_best_idx],
                                    all_l2r_rev_scores=l2r_rev[start_l2r:curr_offset_l2r],
                                    all_r2l_rev_scores=r2l_rev[start_r2l:curr_offset_r2l],
+                                   raw_logits=None if not save_logits else raw_logits_l2r[curr_best_idx]
                                    )
                     )
                 else:
@@ -566,6 +573,7 @@ class DecodeModel(pl.LightningModule):
                                    best_rev=r2l_rev[curr_best_idx],
                                    all_l2r_rev_scores=l2r_rev[start_l2r:curr_offset_l2r],
                                    all_r2l_rev_scores=r2l_rev[start_r2l:curr_offset_r2l],
+                                   raw_logits=None if not save_logits else raw_logits_r2l[curr_best_idx]
                                    )
                     )
             else:

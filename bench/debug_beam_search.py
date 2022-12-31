@@ -35,30 +35,50 @@ from sklearn.svm import SVC
 checkpoint_path = './lightning_logs/version_48/checkpoints/ep=251-st=51982-valLoss=0.3578.ckpt'
 
 
+def score_avg(hyp: Hypothesis):
+    return hyp.score / 2
+
+
 def th_fn_avg(hyp, th, exp):
     seq_len = len(hyp.seq)
-    return ((hyp.score / 2) * (exp ** (1 + 5 * math.log(seq_len))) >= th) if seq_len else False
+    return (score_avg(hyp) * (exp ** (1 + 5 * math.log(seq_len))) >= th) if seq_len else False
+
+
+def score_min(hyp: Hypothesis):
+    return min(hyp.history)
 
 
 def th_fn_min(hyp: Hypothesis, th, exp):
     seq_len = len(hyp.seq)
-    return (min(hyp.history) >= th) if seq_len else False
+    return (score_min(hyp) >= th) if seq_len else False
+
+
+def score_bimin(hyp: Hypothesis):
+    return min((min(hyp.history), min(hyp.best_rev)))
 
 
 def th_fn_bimin(hyp: Hypothesis, th, exp):
     seq_len = len(hyp.seq)
-    return ((min(hyp.history) * (exp ** (1 + 5 * math.log(seq_len)))) >= th) and (
-            (min(hyp.best_rev) * (exp ** (1 + 5 * math.log(seq_len)))) >= th) if seq_len else False
+    return ((score_bimin(hyp) * (exp ** (1 + 5 * math.log(seq_len)))) >= th) if seq_len else False
+
+
+def score_sum(hyp: Hypothesis):
+    return sum(hyp.history)
 
 
 def th_fn_sum(hyp, th, exp):
     seq_len = len(hyp.seq)
-    return (sum(hyp.history) >= th) if seq_len else False
+    return (score_sum(hyp) >= th) if seq_len else False
 
+def score_bisum(hyp: Hypothesis):
+    return sum(hyp.history) + sum(hyp.best_rev)
 
 def th_fn_bisum(hyp, th, exp):
     seq_len = len(hyp.seq)
-    return ((sum(hyp.history) + sum(hyp.best_rev)) >= th) if seq_len else False
+    return (score_bisum(hyp) >= th) if seq_len else False
+
+def score_bisum_avg(hyp: Hypothesis):
+    return (sum(hyp.history) + sum(hyp.best_rev)) / 2
 
 
 def th_fn_bisum_avg(hyp, th, exp):
@@ -67,6 +87,7 @@ def th_fn_bisum_avg(hyp, th, exp):
 
 
 use_fn = th_fn_bimin
+
 
 def calc_min(th_pseudo_perc: float, all_hyps: Dict[str, Hypothesis], oracle: Oracle, exp: float = 1.0):
     th_min = math.log(th_pseudo_perc)
@@ -104,7 +125,7 @@ def single_step(input_tuple: Tuple[float, Dict[str, Hypothesis], Oracle]):
     return calc_min(input_tuple[0], input_tuple[1], input_tuple[2], 1.0), input_tuple[0]
 
 
-def main(gpu: int = -1):
+def main(gpu: int = 6):
     print("init")
     print(f"- gpu: cuda:{gpu}")
     print(f"- cp: {checkpoint_path}")
@@ -114,9 +135,9 @@ def main(gpu: int = -1):
         device = torch.device(f"cuda:{gpu}")
 
     with torch.no_grad():
-        # model: CoMERSupervised = CoMERSupervised.load_from_checkpoint(checkpoint_path, temperature=100)
-        # model = model.eval().to(device)
-        # model.share_memory()
+        model: CoMERSupervised = CoMERSupervised.load_from_checkpoint(checkpoint_path, temperature=100)
+        model = model.eval().to(device)
+        model.share_memory()
 
         print("model loaded")
 
@@ -124,200 +145,285 @@ def main(gpu: int = -1):
             seed_everything(7)
             full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train",
                                                                                            to_device=device)
-            # labeled_indices, unlabeled_indices = get_splitted_indices(
-            #     full_train_data,
-            #     unlabeled_pct=0.85,
-            #     sorting_mode=1
-            # )
-            # labeled_data, unlabeled_data = full_train_data[labeled_indices], full_train_data[
-            #     unlabeled_indices]
-            #
-            # pseudo_labeling_batches = build_batches_from_samples(
-            #     unlabeled_data,
-            #     4
-            # )
-            #
-            # all_hyps = {}
-            #
-            # for batch_raw in pseudo_labeling_batches:
-            #     batch = collate_fn([batch_raw]).to(device=device)
-            #     hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False)
-            #     for i, hyp in enumerate(hyps):
-            #         all_hyps[batch.img_bases[i]] = hyp
+            labeled_indices, unlabeled_indices = get_splitted_indices(
+                full_train_data,
+                unlabeled_pct=0.85,
+                sorting_mode=1
+            )
+            labeled_data, unlabeled_data = full_train_data[labeled_indices], full_train_data[
+                unlabeled_indices]
+
+            pseudo_labeling_batches = build_batches_from_samples(
+                unlabeled_data,
+                4
+            )
+
+            all_hyps = {}
+
+            for batch_raw in pseudo_labeling_batches:
+                batch = collate_fn([batch_raw]).to(device=device)
+                hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False, save_logits=True)
+                for i, hyp in enumerate(hyps):
+                    all_hyps[batch.img_bases[i]] = hyp
+                    print(vocab.indices2words(hyp.seq))
+                    print(hyp.raw_logits.size())
+                    print(hyp.raw_logits)
+                exit(1)
             #
             # torch.save(all_hyps, "hyps_st_15_tmp_100_noglobal.pt")
-            oracle = Oracle(full_train_data)
+            # oracle = Oracle(full_train_data)
+            #
+            # th = math.log(0.64618)
+            #
+            # all_hyps: Dict[str, Hypothesis] = torch.load("../hyps_st_15_tmp_3_noglobal.pt",
+            #                                              map_location=torch.device('cpu'))
+            # correct_hyps = 0
+            # correct_median = 0
+            #
+            # def calc_score(history: FloatTensor, tot_score: FloatTensor):
+            #     summed_logits = torch.sum(history)
+            #     min_logits = torch.min(history)
+            #     return min_logits
+            #
+            # def calc_median(hyp: Hypothesis, fname: str):
+            #     if hyp.all_l2r_hyps is None or hyp.all_r2l_hyps is None or (len(hyp.all_l2r_hyps) == 0) or (
+            #             len(hyp.all_r2l_hyps) == 0):
+            #         return hyp.seq, hyp.history
+            #     min_l2r = min((len(hyp.all_l2r_hyps), 2))
+            #     min_r2l = min((len(hyp.all_r2l_hyps), 2))
+            #     best_l2r_scores, best_l2r_idx = torch.topk(hyp.all_l2r_scores, k=min_l2r)
+            #     best_r2l_scores, best_r2l_idx = torch.topk(hyp.all_r2l_scores, k=min_r2l)
+            #     bstrs = []
+            #     wlist = []
+            #     abs_best_l2r = []
+            #     abs_best_l2r_history = []
+            #     abs_best_r2l = []
+            #     abs_best_r2l_history = []
+            #     for best, score in enumerate(best_l2r_scores):
+            #         if best == 0:
+            #             abs_best_l2r = hyp.all_l2r_hyps[best_l2r_idx[best]].tolist()
+            #             abs_best_l2r_history = hyp.all_l2r_history[best_l2r_idx[best]]
+            #         bstrs.append(bytes(hyp.all_l2r_hyps[best_l2r_idx[best]].tolist()))
+            #         wlist.append(1 / (100 * abs(float(score))))
+            #     for best, score in enumerate(best_r2l_scores):
+            #         if best == 0:
+            #             abs_best_r2l = hyp.all_r2l_hyps[best_r2l_idx[best]].tolist()
+            #             abs_best_r2l_history = hyp.all_r2l_history[best_r2l_idx[best]]
+            #         bstrs.append(bytes(hyp.all_r2l_hyps[best_r2l_idx[best]].tolist()))
+            #         wlist.append(1 / (100 * abs(float(score))))
+            #     if len(abs_best_l2r) == 0:
+            #         abs_best_l2r = abs_best_r2l
+            #         abs_best_l2r_history = abs_best_r2l_history
+            #     if len(abs_best_r2l) == 0:
+            #         abs_best_r2l = abs_best_l2r
+            #         abs_best_r2l_history = abs_best_l2r_history
+            #
+            #     mstr = list(bytearray(median(bstrs, wlist), "utf-8"))
+            #     mhistory = hyp.history.copy()
+            #     if len(mhistory) != len(mstr):
+            #         if len(mhistory) > len(mstr):
+            #             mhistory = mhistory[:len(mstr)]
+            #         else:
+            #             for i in range(abs(len(mhistory) - len(mstr))):
+            #                 mhistory.append(hyp.score / 2)
+            #     # mstr = hyp.seq
+            #     mstr_len = len(mstr)
+            #
+            #     gt = oracle.get_gt_indices(fname)
+            #     gt_len = len(gt)
+            #
+            #     for i, token in enumerate(abs_best_l2r):
+            #         if (i >= gt_len) or (i >= mstr_len) or (gt[i] != token):
+            #             break
+            #         mstr[i] = token
+            #         mhistory[i] = abs_best_l2r_history[i]
+            #
+            #     i = 0
+            #     for r2l_i, token in reversed(list(enumerate(abs_best_r2l))):
+            #         if (i >= gt_len) or (i >= mstr_len) or gt[gt_len - i - 1] != token:
+            #             break
+            #         mstr[mstr_len - 1 - i] = token
+            #         mhistory[mstr_len - 1 - i] = abs_best_r2l_history[r2l_i]
+            #         i += 1
+            #
+            #     return mstr, mhistory
+            #
+            # counters = defaultdict(float)
+            # total_conf_correct = 0.0
+            # min_correct_conf = float('Inf')
+            #
+            # def calc_vec(hyp: Hypothesis):
+            #     token_vec = np.zeros(vocab.__len__() + 1)
+            #     total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
+            #     token_vec[vocab.__len__()] = total
+            #     for idx, token in enumerate(hyp.seq):
+            #         token_vec[token] += hyp.history[idx] * 100 * total
+            #
+            #     # token_vec = np.zeros(400)
+            #     # for idx, token in enumerate(hyp.seq):
+            #     #     token_vec[idx] = token
+            #     #     token_vec[200 + idx] = hyp.history[idx]
+            #
+            #     # token_vec = np.zeros(vocab.__len__() * 2)
+            #     # total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
+            #     # for idx, token in enumerate(hyp.seq):
+            #     #     token_vec[token] += hyp.history[idx] * 100 * total
+            #     #     token_vec[vocab.__len__() + token] += hyp.best_rev[idx] * 100 * total
+            #     return token_vec
+            #
+            # X_normal = []
+            # y_normal = []
+            # has_correct = False
+            # has_incorrect = False
+            #
+            # def tuple_factory():
+            #     return {
+            #         "total": 0,
+            #         "correct": 0,
+            #         "missed": 0
+            #     }
+            #
+            # def bin_factory():
+            #     return defaultdict(tuple_factory)
+            #
+            # bins = defaultdict(bin_factory)
+            # rated_hyps = defaultdict(list)
+            # hyps = []
+            # levs = []
+            #
+            # for fname, hyp in all_hyps.items():
+            #     lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
+            #     y = 0
+            #
+            #     hyp_len = len(hyp.seq)
+            #
+            #     if hyp_len > 0:
+            #         hyps.append(hyp)
+            #         levs.append(lev_dist)
+            #     else:
+            #         continue
+            #
+            #     is_correct = hyp_len > 0 and lev_dist == 0
+            #
+            #     if lev_dist == 0:
+            #         bins["oracle"][hyp_len]["total"] += 1
+            #         bins["oracle"][hyp_len]["correct"] += 1
+            #         y = 1
+            #         counters["correct"] += 1
+            #         min_conf = min(hyp.history)
+            #         total_conf_correct += min_conf
+            #         if min_conf < min_correct_conf:
+            #             min_correct_conf = min_conf
+            #
+            #     mpred, mhistory = calc_median(hyp, fname)
+            #     mpred_lev_dist = oracle.levenshtein_indices(fname, mpred)
+            #     if mpred_lev_dist == 0:
+            #         counters["median_correct"] += 1
+            #
+            #     median_min_score = min(mhistory)
+            #     rated_hyps["median"].append(median_min_score)
+            #
+            #     if len(mhistory) > 0 and median_min_score >= th:
+            #         counters["median_conf_passed"] += 1
+            #         bins["median"][hyp_len]["total"] += 1
+            #         if mpred_lev_dist == 0:
+            #             bins["median"][hyp_len]["correct"] += 1
+            #             counters["median_conf_passed_correct"] += 1
+            #         else:
+            #             counters["median_conf_lev_dist"] += mpred_lev_dist
+            #     elif is_correct:
+            #         bins["median"][hyp_len]["missed"] += 1
+            #
+            #     bimin_score = score_bimin(hyp)
+            #     rated_hyps["bimin"].append(bimin_score)
+            #
+            #     if len(hyp.history) > 0 and bimin_score >= th:
+            #         counters["min_biconf_passed"] += 1
+            #         bins["bimin"][hyp_len]["total"] += 1
+            #         if lev_dist == 0:
+            #             bins["bimin"][hyp_len]["correct"] += 1
+            #             counters["min_biconf_rev_score_correct"] += min(hyp.best_rev)
+            #             counters["min_biconf_passed_correct"] += 1
+            #         else:
+            #             counters["min_biconf_rev_score_incorrect"] += min(hyp.best_rev)
+            #             counters["min_biconf_lev_dist"] += lev_dist
+            #     elif is_correct:
+            #         bins["bimin"][hyp_len]["missed"] += 1
+            #
+            #     min_score = score_min(hyp)
+            #     rated_hyps["min"].append(min_score)
+            #
+            #     if len(hyp.history) > 0 and min_score >= th:
+            #         bins["min"][hyp_len]["total"] += 1
+            #         if np.random.random() < 0.1:
+            #             X_normal.append(calc_vec(hyp))
+            #             y_normal.append(y)
+            #             if y:
+            #                 has_incorrect = True
+            #             else:
+            #                 has_correct = True
+            #         counters["min_conf_passed"] += 1
+            #         if lev_dist == 0:
+            #             bins["min"][hyp_len]["correct"] += 1
+            #             counters["min_conf_passed_correct"] += 1
+            #         else:
+            #             counters["min_conf_lev_dist"] += lev_dist
+            #     elif is_correct:
+            #         bins["min"][hyp_len]["missed"] += 1
+            #
+            #     avg_score = score_avg(hyp)
+            #     rated_hyps["avg"].append(avg_score)
+            #
+            #     if len(hyp.history) > 0 and avg_score >= th:
+            #         bins["avg"][hyp_len]["total"] += 1
+            #         if lev_dist == 0:
+            #             bins["avg"][hyp_len]["correct"] += 1
+            #     elif is_correct:
+            #         bins["avg"][hyp_len]["missed"] += 1
+            #
+            # print("Oracle", len(all_hyps), counters["correct"],
+            #       f"{counters['correct'] * 100 / len(all_hyps):.2f}",
+            #       f'{math.exp(total_conf_correct / counters["correct"])}',
+            #       math.exp(min_correct_conf)
+            #       )
+            # # print(len(all_hyps), counters["median_correct"], f"{zero_safe_division(counters['median_correct'] * 100, len(all_hyps)):.2f}")
+            # print("MinConf", counters["min_conf_passed"],
+            #       f'{zero_safe_division(counters["min_conf_passed_correct"] * 100, counters["min_conf_passed"]):.2f}',
+            #       zero_safe_division(counters["min_conf_lev_dist"],
+            #                          (counters["min_conf_passed"] - counters["min_conf_passed_correct"])),
+            #       )
+            # print("MinBiConf", counters["min_biconf_passed"],
+            #       f'{zero_safe_division(counters["min_biconf_passed_correct"] * 100, counters["min_biconf_passed"]):.2f}',
+            #       zero_safe_division(counters["min_biconf_lev_dist"],
+            #                          (counters["min_biconf_passed"] - counters["min_biconf_passed_correct"])),
+            #       "Corr. AVG Min (R): ",
+            #       f'{zero_safe_exp(zero_safe_division(counters["min_biconf_rev_score_correct"], counters["min_biconf_passed_correct"])):.6f} '
+            #       "Incor. AVG Min (R): ",
+            #       f'{zero_safe_exp(zero_safe_division(counters["min_biconf_rev_score_incorrect"], (counters["min_biconf_passed"] - counters["min_biconf_passed_correct"]))):.6f} '
+            #       )
+            #
+            # print("### Conf by Lens ###")
+            # for name, len_bins in bins.items():
+            #     print(f"## {name} ##".center(20))
+            #     for hyp_len, total_correct_dict in len_bins.items():
+            #         print(f"{hyp_len} : {total_correct_dict['correct']} "
+            #               f"/ {total_correct_dict['total']} ({zero_safe_division(100.0 * total_correct_dict['correct'], total_correct_dict['total']):.2f}%) missed: {total_correct_dict['missed']}")
+            #
+            # percentages = [0.1, 0.2, 0.3, 0.4, 0.5];
+            # print("### Best Percentage ###")
+            #
+            # for p in percentages:
+            #     for name, confs in rated_hyps.items():
+            #         indices = np.argsort(np.array(confs))[::-1]
+            #         correct, total, total_lev = 0, 0, 0
+            #         for i in range(int(math.ceil(len(indices) * p))):
+            #             total_lev += levs[indices[i]]
+            #             if levs[indices[i]] == 0:
+            #                 correct += 1
+            #             total += 1
+            #         print(f"{name}, best {p * 100:.0f}%: {zero_safe_division(correct * 100, total):.2f} lev: {zero_safe_division(total_lev, total):.3f}")
 
-            th = math.log(0.6)
 
-            all_hyps: Dict[str, Hypothesis] = torch.load("../hyps_st_15_tmp_3_noglobal.pt",
-                                                         map_location=torch.device('cpu'))
-            correct_hyps = 0
-            correct_median = 0
-
-            def calc_score(history: FloatTensor, tot_score: FloatTensor):
-                summed_logits = torch.sum(history)
-                min_logits = torch.min(history)
-                return min_logits
-
-            def calc_median(hyp: Hypothesis, fname: str):
-                if hyp.all_l2r_hyps is None or hyp.all_r2l_hyps is None or (len(hyp.all_l2r_hyps) == 0) or (
-                        len(hyp.all_r2l_hyps) == 0):
-                    return hyp.seq, hyp.history
-                min_l2r = min((len(hyp.all_l2r_hyps), 2))
-                min_r2l = min((len(hyp.all_r2l_hyps), 2))
-                best_l2r_scores, best_l2r_idx = torch.topk(hyp.all_l2r_scores, k=min_l2r)
-                best_r2l_scores, best_r2l_idx = torch.topk(hyp.all_r2l_scores, k=min_r2l)
-                bstrs = []
-                wlist = []
-                abs_best_l2r = []
-                abs_best_l2r_history = []
-                abs_best_r2l = []
-                abs_best_r2l_history = []
-                for best, score in enumerate(best_l2r_scores):
-                    if best == 0:
-                        abs_best_l2r = hyp.all_l2r_hyps[best_l2r_idx[best]].tolist()
-                        abs_best_l2r_history = hyp.all_l2r_history[best_l2r_idx[best]]
-                    bstrs.append(bytes(hyp.all_l2r_hyps[best_l2r_idx[best]].tolist()))
-                    wlist.append(1 / (100 * abs(float(score))))
-                for best, score in enumerate(best_r2l_scores):
-                    if best == 0:
-                        abs_best_r2l = hyp.all_r2l_hyps[best_r2l_idx[best]].tolist()
-                        abs_best_r2l_history = hyp.all_r2l_history[best_r2l_idx[best]]
-                    bstrs.append(bytes(hyp.all_r2l_hyps[best_r2l_idx[best]].tolist()))
-                    wlist.append(1 / (100 * abs(float(score))))
-                if len(abs_best_l2r) == 0:
-                    abs_best_l2r = abs_best_r2l
-                    abs_best_l2r_history = abs_best_r2l_history
-                if len(abs_best_r2l) == 0:
-                    abs_best_r2l = abs_best_l2r
-                    abs_best_r2l_history = abs_best_l2r_history
-
-                mstr = list(bytearray(median(bstrs, wlist), "utf-8"))
-                mhistory = hyp.history.copy()
-                if len(mhistory) != len(mstr):
-                    if len(mhistory) > len(mstr):
-                        mhistory = mhistory[:len(mstr)]
-                    else:
-                        for i in range(abs(len(mhistory) - len(mstr))):
-                            mhistory.append(hyp.score / 2)
-                # mstr = hyp.seq
-                mstr_len = len(mstr)
-
-                gt = oracle.get_gt_indices(fname)
-                gt_len = len(gt)
-
-                for i, token in enumerate(abs_best_l2r):
-                    if (i >= gt_len) or (i >= mstr_len) or (gt[i] != token):
-                        break
-                    mstr[i] = token
-                    mhistory[i] = abs_best_l2r_history[i]
-
-                i = 0
-                for r2l_i, token in reversed(list(enumerate(abs_best_r2l))):
-                    if (i >= gt_len) or (i >= mstr_len) or gt[gt_len - i - 1] != token:
-                        break
-                    mstr[mstr_len - 1 - i] = token
-                    mhistory[mstr_len - 1 - i] = abs_best_r2l_history[r2l_i]
-                    i += 1
-
-                return mstr, mhistory
-
-            counters = defaultdict(float)
-            total_conf_correct = 0.0
-            min_correct_conf = float('Inf')
-
-            def calc_vec(hyp: Hypothesis):
-                token_vec = np.zeros(vocab.__len__() + 1)
-                total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
-                token_vec[vocab.__len__()] = total
-                for idx, token in enumerate(hyp.seq):
-                    token_vec[token] += hyp.history[idx] * 100 * total
-
-                # token_vec = np.zeros(400)
-                # for idx, token in enumerate(hyp.seq):
-                #     token_vec[idx] = token
-                #     token_vec[200 + idx] = hyp.history[idx]
-
-                # token_vec = np.zeros(vocab.__len__() * 2)
-                # total = len(hyp.all_r2l_hyps) + len(hyp.all_l2r_hyps)
-                # for idx, token in enumerate(hyp.seq):
-                #     token_vec[token] += hyp.history[idx] * 100 * total
-                #     token_vec[vocab.__len__() + token] += hyp.best_rev[idx] * 100 * total
-                return token_vec
-
-            X_normal = []
-            y_normal = []
-            has_correct = False
-            has_incorrect = False
-
-            for fname, hyp in all_hyps.items():
-                lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
-                y = 0
-
-                if lev_dist == 0:
-                    y = 1
-                    counters["correct"] += 1
-                    min_conf = min(hyp.history)
-                    total_conf_correct += min_conf
-                    if min_conf < min_correct_conf:
-                        min_correct_conf = min_conf
-
-                mpred, mhistory = calc_median(hyp, fname)
-                mpred_lev_dist = oracle.levenshtein_indices(fname, mpred)
-                if mpred_lev_dist == 0:
-                    counters["median_correct"] += 1
-
-                if len(mhistory) > 0 and min(mhistory) >= th:
-                    counters["median_conf_passed"] += 1
-                    if mpred_lev_dist == 0:
-                        counters["median_conf_passed_correct"] += 1
-                    else:
-                        counters["median_conf_lev_dist"] += mpred_lev_dist
-
-                if len(hyp.history) > 0 and min(hyp.history) >= th and min(hyp.best_rev) >= th:
-                    counters["min_biconf_passed"] += 1
-                    if lev_dist == 0:
-                        counters["min_biconf_rev_score_correct"] += min(hyp.best_rev)
-                        counters["min_biconf_passed_correct"] += 1
-                    else:
-                        counters["min_biconf_rev_score_incorrect"] += min(hyp.best_rev)
-                        counters["min_biconf_lev_dist"] += lev_dist
-
-                if len(hyp.history) > 0 and min(hyp.history) >= th:
-                    if np.random.random() < 0.1:
-                        X_normal.append(calc_vec(hyp))
-                        y_normal.append(y)
-                        if y:
-                            has_incorrect = True
-                        else:
-                            has_correct = True
-                    counters["min_conf_passed"] += 1
-                    if lev_dist == 0:
-                        counters["min_conf_passed_correct"] += 1
-                    else:
-                        counters["min_conf_lev_dist"] += lev_dist
-
-            print("Oracle", len(all_hyps), counters["correct"],
-                  f"{counters['correct'] * 100 / len(all_hyps):.2f}",
-                  f'{math.exp(total_conf_correct / counters["correct"])}',
-                  math.exp(min_correct_conf)
-                  )
-            # print(len(all_hyps), counters["median_correct"], f"{zero_safe_division(counters['median_correct'] * 100, len(all_hyps)):.2f}")
-            print("MinConf", counters["min_conf_passed"],
-                  f'{zero_safe_division(counters["min_conf_passed_correct"] * 100, counters["min_conf_passed"]):.2f}',
-                  zero_safe_division(counters["min_conf_lev_dist"],
-                                     (counters["min_conf_passed"] - counters["min_conf_passed_correct"])),
-                  )
-            print("MinBiConf", counters["min_biconf_passed"],
-                  f'{zero_safe_division(counters["min_biconf_passed_correct"] * 100, counters["min_biconf_passed"]):.2f}',
-                  zero_safe_division(counters["min_biconf_lev_dist"],
-                                     (counters["min_biconf_passed"] - counters["min_biconf_passed_correct"])),
-                  "Corr. AVG Min (R): ",
-                  f'{zero_safe_exp(zero_safe_division(counters["min_biconf_rev_score_correct"], counters["min_biconf_passed_correct"])):.6f} '
-                  "Incor. AVG Min (R): ",
-                  f'{zero_safe_exp(zero_safe_division(counters["min_biconf_rev_score_incorrect"], (counters["min_biconf_passed"] - counters["min_biconf_passed_correct"]))):.6f} '
-                  )
             # print("MedianMinConf", counters["median_conf_passed"],
             #       f'{zero_safe_division(counters["median_conf_passed_correct"] * 100, counters["median_conf_passed"]):.2f}',
             #       zero_safe_division(counters["median_conf_lev_dist"], (counters["median_conf_passed"] - counters["median_conf_passed_correct"]))
@@ -353,45 +459,45 @@ def main(gpu: int = -1):
             #           zero_safe_division(counters["svm_bi_lev_dist"], (counters["svm_bi_passed"] - counters["svm_bi_passed_correct"]))
             #       )
 
-            curr_min = 1e-10
-            curr_max = 0.95
-
-            steps = 100000
-            step_size = (curr_max - curr_min) / steps
-
-            cov_exp = 2
-
-            inputs = [(curr_min + step_size * s, all_hyps, oracle) for s in range(steps)]
-
-            do_calc = False
-
-            if do_calc:
-                results = []
-                with multiprocessing.Pool(multiprocessing.cpu_count()) as p:
-                    result_iter = p.imap_unordered(single_step, inputs,
-                                                   chunksize=int(math.ceil(len(inputs) / multiprocessing.cpu_count())))
-                    for x in result_iter:
-                        results.append(x)
-                torch.save(results, f"test_{use_fn.__name__}.pt")
-            else:
-                results = torch.load(f"test_{use_fn.__name__}.pt")
-
-            for corr_exp_ in range(30):
-                corr_exp = (corr_exp_ + 1) / 2
-                best = 0.95
-                best_score = float('-Inf')
-                best_cov, best_pass, best_corr, best_pct, best_exp = 0, 0, 0, 0, 0
-                for ((m_pass, m_corr, cov_pct, correct_pct), curr_th) in results:
-                    if ((correct_pct ** corr_exp) * (cov_pct ** cov_exp)) > best_score:
-                        best = curr_th
-                        best_score = ((correct_pct ** corr_exp) * (cov_pct ** cov_exp))
-                        best_cov = cov_pct
-                        best_pass = m_pass
-                        best_corr = m_corr
-                        best_pct = correct_pct
-                        best_exp = 1.0
-                print(f"{corr_exp}".ljust(3), f"{best:.5f}", best_pass, best_corr, f"corr: {best_pct * 100:.2f}",
-                      f"cov: {best_cov * 100:.2f}")
+            # curr_min = 1e-10
+            # curr_max = 0.95
+            #
+            # steps = 100000
+            # step_size = (curr_max - curr_min) / steps
+            #
+            # cov_exp = 2
+            #
+            # inputs = [(curr_min + step_size * s, all_hyps, oracle) for s in range(steps)]
+            #
+            # do_calc = False
+            #
+            # if do_calc:
+            #     results = []
+            #     with multiprocessing.Pool(multiprocessing.cpu_count()) as p:
+            #         result_iter = p.imap_unordered(single_step, inputs,
+            #                                        chunksize=int(math.ceil(len(inputs) / multiprocessing.cpu_count())))
+            #         for x in result_iter:
+            #             results.append(x)
+            #     torch.save(results, f"test_{use_fn.__name__}.pt")
+            # else:
+            #     results = torch.load(f"test_{use_fn.__name__}.pt")
+            #
+            # for corr_exp_ in range(30):
+            #     corr_exp = (corr_exp_ + 1) / 2
+            #     best = 0.95
+            #     best_score = float('-Inf')
+            #     best_cov, best_pass, best_corr, best_pct, best_exp = 0, 0, 0, 0, 0
+            #     for ((m_pass, m_corr, cov_pct, correct_pct), curr_th) in results:
+            #         if ((correct_pct ** corr_exp) * (cov_pct ** cov_exp)) > best_score:
+            #             best = curr_th
+            #             best_score = ((correct_pct ** corr_exp) * (cov_pct ** cov_exp))
+            #             best_cov = cov_pct
+            #             best_pass = m_pass
+            #             best_corr = m_corr
+            #             best_pct = correct_pct
+            #             best_exp = 1.0
+            #     print(f"{corr_exp}".ljust(3), f"{best:.5f}", best_pass, best_corr, f"corr: {best_pct * 100:.2f}",
+            #           f"cov: {best_cov * 100:.2f}")
 
     # for i in range(steps):
     #     curr = curr_min + step_size * i
