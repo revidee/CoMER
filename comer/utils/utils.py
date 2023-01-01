@@ -42,7 +42,8 @@ class Hypothesis:
             best_rev: Union[FloatTensor, None] = None,
             all_l2r_rev_scores: Union[List[FloatTensor], None] = None,
             all_r2l_rev_scores: Union[List[FloatTensor], None] = None,
-            raw_logits: Union[FloatTensor, None] = None
+            raw_logits: Union[FloatTensor, None] = None,
+            raw_logits_rev: Union[FloatTensor, None] = None
     ) -> None:
         assert direction in {"l2r", "r2l"}
         raw_seq = seq_tensor.tolist()
@@ -79,6 +80,7 @@ class Hypothesis:
         self.all_r2l_rev_scores = all_r2l_rev_scores
 
         self.raw_logits = raw_logits
+        self.raw_logits_rev = raw_logits_rev
 
     def __len__(self):
         if len(self.seq) != 0:

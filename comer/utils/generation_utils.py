@@ -372,7 +372,8 @@ class DecodeModel(pl.LightningModule):
             [b * beam_size]
         """
         b = tgt.shape[0]
-        out_hat = self(src, src_mask, tgt) / temperature
+        unsharpened = self(src, src_mask, tgt)
+        out_hat = unsharpened / temperature
 
         loss = ce_loss(out_hat, out, reduction="none")
         loss = rearrange(loss, "(b l) -> b l", b=b)
@@ -381,7 +382,7 @@ class DecodeModel(pl.LightningModule):
         penalty = (~mask).sum(dim=1) ** alpha
         loss = -torch.sum(loss, dim=1) / penalty
 
-        return loss, out_hat
+        return loss, unsharpened
 
     def new_beam_search(
             self,
@@ -462,7 +463,7 @@ class DecodeModel(pl.LightningModule):
                 tgt = torch.cat((r2l_tgt, l2r_tgt), dim=0)
                 out = torch.cat((r2l_out, l2r_out), dim=0)
 
-            rev_scores, out_hat = self._new_rate(
+            rev_scores, raw_rev_logits = self._new_rate(
                 torch.cat(
                     (
                         torch.repeat_interleave(src, repeats_l2r, dim=0),
@@ -479,7 +480,7 @@ class DecodeModel(pl.LightningModule):
             )
             out_hat = torch.flip(
                 F.log_softmax(
-                    out_hat,
+                    raw_rev_logits / temperature,
                     dim=-1
                 ), dims=[1])
             if debug:
@@ -499,6 +500,8 @@ class DecodeModel(pl.LightningModule):
         curr_offset_r2l = 0
         l2r_rev: List[FloatTensor] = []
         r2l_rev: List[FloatTensor] = []
+        l2r_rev_raw_logits: List[FloatTensor] = []
+        r2l_rev_raw_logits: List[FloatTensor] = []
         # Find the best hyp from the (optionally rescored) set of best l2r/r2l hyps.
         for src_idx, (len_l2r, len_r2l) in enumerate(zip(repeats_l2r, repeats_r2l)):
             # choose the best candidate for each input from the batch
@@ -518,6 +521,12 @@ class DecodeModel(pl.LightningModule):
                         hyps_l2r[hyp_cand_idx].unsqueeze(-1),
                     ).squeeze(-1)
                 )
+                l2r_rev_raw_logits.append(
+                    raw_rev_logits[
+                        hyp_cand_idx,
+                        :hyps_l2r[hyp_cand_idx].size(0) + 1
+                    ]
+                )
                 if hyp_cand_score > curr_best_score:
                     curr_best_idx = hyp_cand_idx
                     curr_best_score = hyp_cand_score
@@ -528,12 +537,18 @@ class DecodeModel(pl.LightningModule):
                 r2l_rev.append(
                     torch.gather(
                         out_hat[
-                        hyps_l2r_len + hyp_cand_idx,
+                            hyps_l2r_len + hyp_cand_idx,
                             (max_len - hyps_r2l[hyp_cand_idx].size(0)):
                         ],
                         1,
                         hyps_r2l[hyp_cand_idx].unsqueeze(-1),
                     ).squeeze(-1)
+                )
+                r2l_rev_raw_logits.append(
+                    raw_rev_logits[
+                        hyps_l2r_len + hyp_cand_idx,
+                        :hyps_r2l[hyp_cand_idx].size(0) + 1
+                    ]
                 )
                 if hyp_cand_score > curr_best_score:
                     curr_best_idx = hyp_cand_idx
@@ -557,7 +572,8 @@ class DecodeModel(pl.LightningModule):
                                    best_rev=l2r_rev[curr_best_idx],
                                    all_l2r_rev_scores=l2r_rev[start_l2r:curr_offset_l2r],
                                    all_r2l_rev_scores=r2l_rev[start_r2l:curr_offset_r2l],
-                                   raw_logits=None if not save_logits else raw_logits_l2r[curr_best_idx]
+                                   raw_logits=None if not save_logits else raw_logits_l2r[curr_best_idx],
+                                   raw_logits_rev=None if not save_logits else l2r_rev_raw_logits[curr_best_idx]
                                    )
                     )
                 else:
@@ -573,7 +589,8 @@ class DecodeModel(pl.LightningModule):
                                    best_rev=r2l_rev[curr_best_idx],
                                    all_l2r_rev_scores=l2r_rev[start_l2r:curr_offset_l2r],
                                    all_r2l_rev_scores=r2l_rev[start_r2l:curr_offset_r2l],
-                                   raw_logits=None if not save_logits else raw_logits_r2l[curr_best_idx]
+                                   raw_logits=None if not save_logits else raw_logits_r2l[curr_best_idx],
+                                   raw_logits_rev=None if not save_logits else r2l_rev_raw_logits[curr_best_idx]
                                    )
                     )
             else:

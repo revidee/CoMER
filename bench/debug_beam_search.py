@@ -162,13 +162,20 @@ def main(gpu: int = 6):
 
             for batch_raw in pseudo_labeling_batches:
                 batch = collate_fn([batch_raw]).to(device=device)
-                hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False, save_logits=True)
+                hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False, save_logits=False)
                 for i, hyp in enumerate(hyps):
                     all_hyps[batch.img_bases[i]] = hyp
                     print(vocab.indices2words(hyp.seq))
-                    print(hyp.raw_logits.size())
+                    print("best normal")
                     print(hyp.raw_logits)
-                exit(1)
+                    print("best rev")
+                    print(hyp.raw_logits_rev)
+                    tgt, out = to_bi_tgt_out(batch.labels, device)
+                    print("supervised")
+                    raw = model(batch.imgs, batch.mask, tgt)
+                    print(raw[0])
+                    print(raw[len(batch.labels)])
+                    exit(1)
             #
             # torch.save(all_hyps, "hyps_st_15_tmp_100_noglobal.pt")
             # oracle = Oracle(full_train_data)
