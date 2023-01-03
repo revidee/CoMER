@@ -26,7 +26,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         # Hack to get a zero-grad (no change) to the current temperature param, which is otherwise not used in training
         return super().training_step(batch, _) + 0.0 * self.current_temperature
 
-    def validation_step(self, batch: Batch, batch_idx, dataloader_idx) -> Tuple[Tensor, Tuple[LongTensor, FloatTensor]]:
+    def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0) -> Tuple[Tensor, Tuple[LongTensor, FloatTensor]]:
         tgt, out = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 

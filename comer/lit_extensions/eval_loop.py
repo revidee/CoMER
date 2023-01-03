@@ -36,7 +36,7 @@ class EvaluationWithUnlabeledLoop(EvaluationLoop):
         kwargs = OrderedDict()
         if self.num_dataloaders > 1:
             kwargs["dataloader_idx"] = dataloader_idx
-        if dataloader_idx == self.num_dataloaders - 1 and not self.trainer.sanity_checking:
+        if self.num_dataloaders > 1 and dataloader_idx == self.num_dataloaders - 1 and not self.trainer.sanity_checking:
             dl_outputs = self.unlabeled_loop.run(self._data_fetcher, dl_max_batches, kwargs)
         else:
             dl_outputs = self.epoch_loop.run(self._data_fetcher, dl_max_batches, kwargs)

@@ -150,6 +150,7 @@ def ce_logitnorm_loss(
     Args:
         output_hat (torch.Tensor): [batch, len, e]
         output (torch.Tensor): [batch, len]
+        temperature: (torch.Tensor), (1) the T parameter from the paper
         ignore_idx (int):
 
     Returns:

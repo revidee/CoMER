@@ -12,6 +12,8 @@ from comer.modules.fixmatch_inter_oracle import CoMERFixMatchOracleInterleaved
 from comer.modules.fixmatch_interleaved import CoMERFixMatchInterleaved
 from comer.modules.fixmatch_sorted_fixed_pct import CoMERFixMatchInterleavedFixedPct
 from comer.modules.fixmatch_sorted_fixed_pct_temp_scale import CoMERFixMatchInterleavedFixedPctTemperatureScaling
+from comer.modules.fixmatch_sorted_fixed_pct_temp_scale_logit_norm import \
+    CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm
 from comer.modules.fixmatch_temp_scale import CoMERFixMatchInterleavedTemperatureScaling
 
 if __name__ == '__main__':
@@ -20,7 +22,7 @@ if __name__ == '__main__':
     trainer = UnlabeledValidationExtraStepTrainer(
         unlabeled_val_loop=True,
         accelerator='gpu',
-        devices=[0, 1],
+        devices=[6, 7],
         strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
         max_epochs=300,
         deterministic=True,
@@ -49,15 +51,17 @@ if __name__ == '__main__':
         unlabeled_weak_aug=""
     )
 
-    model: CoMERFixMatch = CoMERFixMatchInterleavedFixedPctTemperatureScaling.load_from_checkpoint(
+    model: CoMERFixMatch = CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm.load_from_checkpoint(
         './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt',
         strict=False,
         learning_rate=0.0008,
         patience=20,
-        pseudo_labeling_threshold=0.4,
+        pseudo_labeling_threshold=0.2,
         lambda_u=1.0,
         temperature=3.0,
-        keep_old_preds=True
+        keep_old_preds=True,
+        monitor="val_ExpRate/dataloader_idx_0",
+        logit_norm_temp=0.05
     )
 
     trainer.fit(model, dm)

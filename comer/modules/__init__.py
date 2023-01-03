@@ -2,3 +2,8 @@ from .self_training import CoMERSelfTraining
 from .supervised import CoMERSupervised
 from .fixmatch import CoMERFixMatch
 from .fixmatch_interleaved import CoMERFixMatchInterleaved
+from .fixmatch_inter_oracle import CoMERFixMatchOracleInterleaved
+from .fixmatch_sorted_fixed_pct import CoMERFixMatchInterleavedFixedPct
+from .fixmatch_temp_scale import CoMERFixMatchInterleavedTemperatureScaling
+from .fixmatch_sorted_fixed_pct_temp_scale import CoMERFixMatchInterleavedFixedPctTemperatureScaling
+from .fixmatch_sorted_fixed_pct_temp_scale_logit_norm import CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm
