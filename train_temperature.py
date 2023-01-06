@@ -42,7 +42,8 @@ if __name__ == '__main__':
                             auto_insert_metric_name=False
                             ),
         ],
-        precision=32
+        precision=32,
+        inference_mode=False
     )
     dm = CROHMEFixMatchInterleavedDatamodule(
         test_year='2019',
@@ -71,4 +72,32 @@ if __name__ == '__main__':
         th_optim_sharpening=50
     )
 
-    trainer.fit(model, dm)
+    with ZipFile("data.zip") as f:
+        trainer.validate(model, DataLoader(
+            CROHMEDataset(
+                build_dataset(f, "2019", 4)[0],
+                "",
+                "",
+            ),
+            shuffle=False,
+            num_workers=5,
+            collate_fn=collate_fn,
+        ))
+        print("Re-evaluating with NLL/ECE optimized temperature...")
+        trainer.validate(model, DataLoader(
+            CROHMEDataset(
+                build_dataset(f, "2019", 4)[0],
+                "",
+                "",
+            ),
+            shuffle=False,
+            num_workers=5,
+            collate_fn=collate_fn,
+        ))
+        print(trainer.logged_metrics)
+        trainer.save_checkpoint(
+            f'./lightning_logs/version_69/checkpoints/optimized_ts_{trainer.logged_metrics["val_ExpRate"]:.4f}.ckpt',
+            False
+        )
+
+

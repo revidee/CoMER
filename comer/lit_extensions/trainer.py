@@ -9,6 +9,8 @@ class UnlabeledValidationExtraStepTrainer(Trainer):
         if unlabeled_val_loop:
             self.fit_loop.epoch_loop.connect(self.fit_loop.epoch_loop.batch_loop, EvaluationWithUnlabeledLoop())
             self.fit_loop.trainer = self
+            self.validate_loop = EvaluationWithUnlabeledLoop()
+            self.validate_loop.trainer = self
 
 
     # Started to implement custom DataLoader for SelfTraining, but decided to opt for special-casing the last
