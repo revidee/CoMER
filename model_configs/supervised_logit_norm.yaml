@@ -50,7 +50,9 @@ fit:
       patience: 20
       pseudo_labeling_threshold: 1.0
       lambda_u: 1.0
-      logit_norm_temp: 0.05
+      logit_norm_temp: 0.075
+      th_optim_correct_weight: 9
+      th_optim_sharpening: 6
       keep_old_preds: false
       monitor: 'val_ExpRate'
   data:

@@ -102,12 +102,7 @@ class ExpRateRecorder(Metric):
 
     def update(self, indices_hat: List[List[int]], indices: List[List[int]]):
         for pred, truth in zip(indices_hat, indices):
-            pred = vocab.indices2label(pred)
-            truth = vocab.indices2label(truth)
-
-            is_same = pred == truth
-
-            if is_same:
+            if pred == truth:
                 self.rec += 1
 
             self.total_line += 1

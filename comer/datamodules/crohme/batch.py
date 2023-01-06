@@ -118,7 +118,7 @@ def get_splitted_indices(
 def build_batch_split_from_entries(
         data: 'np.ndarray[Any, np.dtype[DataEntry]]',
         batch_size: int,
-        batch_imagesize: int = 32e10,
+        batch_imagesize: int = MAX_SIZE,
         maxlen: int = 200,
         max_imagesize: int = MAX_SIZE,
         unlabeled_pct: float = 0,

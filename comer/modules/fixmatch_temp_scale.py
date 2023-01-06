@@ -1,3 +1,5 @@
+import itertools
+import math
 from typing import Union, List, Tuple
 
 import torch
@@ -6,6 +8,7 @@ from torch import LongTensor, FloatTensor, Tensor, optim
 
 from comer.datamodules.crohme import Batch, vocab
 from comer.modules import CoMERFixMatchInterleaved
+from comer.utils import ECELoss
 from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out, Hypothesis)
 
@@ -17,16 +20,21 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
     def __init__(
             self,
+            th_optim_correct_weight: float,
+            th_optim_sharpening: float,
             **kwargs
     ):
         super().__init__(**kwargs)
+        self.save_hyperparameters()
         self.current_temperature = torch.nn.Parameter(torch.ones(1) * 1.5)
 
     def training_step(self, batch: Batch, _):
         # Hack to get a zero-grad (no change) to the current temperature param, which is otherwise not used in training
         return super().training_step(batch, _) + 0.0 * self.current_temperature
 
-    def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0) -> Tuple[Tensor, Tuple[LongTensor, FloatTensor]]:
+    def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0) -> Tuple[
+        Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]
+    ]:
         tgt, out = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 
@@ -56,22 +64,30 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
         return (
             loss,
-            (out, out_hat)
+            # TODO: finally abstract the hyp conf score function away
+            (out, out_hat, [h.score / 2 for h in hyps], [h.seq for h in hyps], batch.labels)
         )
 
     def approximate_joint_search(
-            self, img: FloatTensor, mask: LongTensor, use_new: bool = True, save_logits: bool = False, debug=False
+            self, img: FloatTensor, mask: LongTensor, use_new: bool = True,
+            save_logits: bool = False, debug=False, temperature=None
     ) -> List[Hypothesis]:
+        if temperature is None:
+            temperature = self.current_temperature.item()
         hp = dict(self.hparams)
         del hp["temperature"]
         return self.comer_model.new_beam_search(
             img, mask, **hp, scoring_run=True, bi_dir=True,
-            save_logits=save_logits, debug=debug, temperature=self.current_temperature.item()
+            save_logits=save_logits, debug=debug, temperature=temperature
         )
 
-    def validation_dataloader_end(self, outputs: List[Tuple[Tensor, Tuple[LongTensor, FloatTensor]]]):
-        all_gpu_labels: List[Union[None, List[Tuple[Tensor, Tuple[LongTensor, FloatTensor]]]]]\
-            = [None for _ in range(dist.get_world_size())] if self.local_rank == 0 else None
+    def validation_dataloader_end(self, outputs: List[
+        Tuple[Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]]
+    ]):
+        torch.cuda.empty_cache()
+        all_gpu_labels: List[Union[None, List[
+            Tuple[Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]]
+        ]]] = [None for _ in range(dist.get_world_size())] if self.local_rank == 0 else None
         dist.barrier()
         dist.gather_object(outputs, all_gpu_labels)
         # out_hat
@@ -82,79 +98,96 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
             all_labels_append = all_labels.append
             all_logits = []
             all_logits_append = all_logits.append
+            correct_scores = []
+            correct_scores_append = correct_scores.append
+            incorrect_scores = []
+            incorrect_scores_append = incorrect_scores.append
             for single_gpu_outputs in all_gpu_labels:
                 for single_gpu_step_output in single_gpu_outputs:
-                    flat = rearrange(single_gpu_step_output[1][0], "b l -> (b l)")
-                    flat_hat = rearrange(single_gpu_step_output[1][1], "b l e -> (b l) e")
+                    out, out_hat, scores, seqs, labels = single_gpu_step_output[1]
+                    flat = rearrange(out, "b l -> (b l)")
+                    flat_hat = rearrange(out_hat, "b l e -> (b l) e")
                     all_labels_append(flat.to(self.device))
                     all_logits_append(flat_hat.to(self.device))
+                    for i, label in enumerate(labels):
+                        if label == seqs[i]:
+                            correct_scores_append(scores[i])
+                        else:
+                            incorrect_scores_append(scores[i])
             labels = torch.cat(all_labels)
             logits = torch.cat(all_logits)
 
-            # ece_criterion = _ECELoss().to(self.device)
+            correct_scores: Tensor = torch.tensor(correct_scores, device=self.device, requires_grad=True)
+            total_correct: Tensor = torch.ones(1, device=self.device, dtype=torch.float, requires_grad=True) * correct_scores.size(0)
+            incorrect_scores: Tensor = torch.tensor(incorrect_scores, device=self.device, requires_grad=True)
 
-            optimizer = optim.LBFGS([self.current_temperature], lr=0.01, max_iter=50)
+            # Optimize Temperature Scaling by minimizing the CE-Loss when scaling the logits
+            ece_criterion = ECELoss().to(self.device)
+            self.current_temperature = torch.nn.Parameter(torch.ones(1, device=self.device))
+            optimizer = optim.LBFGS([self.current_temperature], lr=0.01, max_iter=10000)
 
             # before_temperature_nll = F.cross_entropy(logits / self.current_temperature, labels,
             #                                          ignore_index=vocab.PAD_IDX, reduction="mean").item()
             # before_temperature_ece = ece_criterion(logits, labels).item()
             #
             # print(f'Before temperature - NLL: {before_temperature_nll:.3f}, ECE: {before_temperature_ece:.3f}')
-            def eval():
+            def eval_curr_temp():
                 optimizer.zero_grad()
-                loss = F.cross_entropy(logits / self.current_temperature, labels,
-                                       ignore_index=vocab.PAD_IDX, reduction="mean")
+                loss = ece_criterion(logits / self.current_temperature, labels)
                 loss.backward()
                 return loss
             self.train(True)
-            optimizer.step(eval)
-            self.train(False)
+            self.comer_model.eval()
+            optimizer.step(eval_curr_temp)
             optimizer.zero_grad()
+
+            if total_correct > 0 and False:
+                threshold = torch.nn.Parameter(torch.ones(1, device=self.device) * 0.5)
+                optimizer = optim.LBFGS([threshold], lr=0.01, max_iter=1000)
+
+                def eval_threshold():
+                    optimizer.zero_grad()
+                    log_th = torch.log(threshold)
+                    # corrects = torch.sum((correct_scores >= log_th).float())
+                    # corrects = torch.sum((torch.tanh(torch.relu(self.hparams.th_optim_sharpening * (correct_scores - log_th)))))
+                    corrects = torch.sum((torch.sigmoid(self.hparams.th_optim_sharpening * (correct_scores - log_th))))
+                    # incorrects = torch.sum((incorrect_scores >= log_th).float())
+                    # incorrects = torch.sum((torch.tanh(torch.relu(self.hparams.th_optim_sharpening * (incorrect_scores - log_th)))))
+                    incorrects = torch.sum((torch.sigmoid(self.hparams.th_optim_sharpening * (incorrect_scores - log_th))))
+                    total_passing = corrects + incorrects
+                    #
+
+                    correct_pct = corrects / total_passing if total_passing != 0 else 0.0
+                    coverage_pct = corrects / total_correct
+
+                    loss = (1.0 + self.hparams.th_optim_correct_weight) - (
+                            ((correct_pct * self.hparams.th_optim_correct_weight) + coverage_pct)
+                    )
+
+                    # loss = (total_correct - corrects) + incorrects
+
+                    # print(f"step {loss.item()}, corr: {(corrects / total_passing).item() * 100.0:.1f}"
+                    #       f" cov: {(corrects / total_correct).item() * 100.0:.1f}")
+
+                    loss.backward()
+                    return loss
+
+                optimizer.step(eval_threshold)
+                optimizer.zero_grad()
+                self.train(False)
+                log_th = torch.log(threshold)
+                corrects = torch.sum((correct_scores >= log_th).long())
+                incorrects = torch.sum((incorrect_scores >= log_th).long())
+                total_passing = corrects + incorrects
+
+                correct_pct = corrects / total_passing if total_passing != 0 else torch.zeros(1, device=self.device)
+                coverage_pct = corrects / total_correct
+                print(f"optim th: {threshold.item():.5f}, corr: {correct_pct.item() * 100.0:.1f}"
+                      f" cov: {coverage_pct.item() * 100.0:.1f}")
+            self.train(False)
 
             # after_temperature_nll = F.cross_entropy(logits / self.current_temperature, labels,
             #                                         ignore_index=vocab.PAD_IDX, reduction="mean").item()
             # after_temperature_ece = ece_criterion(logits / self.current_temperature, labels).item()
             # print(f'Optimal temperature: {self.current_temperature.item():.3f}')
             # print(f'After temperature - NLL: {after_temperature_nll:.3f}, ECE: {after_temperature_ece:.3f}')
-
-
-
-class _ECELoss(torch.nn.Module):
-    """
-    Calculates the Expected Calibration Error of a model.
-    (This isn't necessary for temperature scaling, just a cool metric).
-    The input to this loss is the logits of a model, NOT the softmax scores.
-    This divides the confidence outputs into equally-sized interval bins.
-    In each bin, we compute the confidence gap:
-    bin_gap = | avg_confidence_in_bin - accuracy_in_bin |
-    We then return a weighted average of the gaps, based on the number
-    of samples in each bin
-    See: Naeini, Mahdi Pakdaman, Gregory F. Cooper, and Milos Hauskrecht.
-    "Obtaining Well Calibrated Probabilities Using Bayesian Binning." AAAI.
-    2015.
-    """
-    def __init__(self, n_bins=15):
-        """
-        n_bins (int): number of confidence interval bins
-        """
-        super(_ECELoss, self).__init__()
-        bin_boundaries = torch.linspace(0, 1, n_bins + 1)
-        self.bin_lowers = bin_boundaries[:-1]
-        self.bin_uppers = bin_boundaries[1:]
-
-    def forward(self, logits, labels):
-        softmaxes = F.softmax(logits, dim=1)
-        confidences, predictions = torch.max(softmaxes, 1)
-        accuracies = predictions.eq(labels)
-
-        ece = torch.zeros(1, device=logits.device)
-        for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
-            # Calculated |confidence - accuracy| in each bin
-            in_bin = confidences.gt(bin_lower.item()) * confidences.le(bin_upper.item())
-            prop_in_bin = in_bin.float().mean()
-            if prop_in_bin.item() > 0:
-                accuracy_in_bin = accuracies[in_bin].float().mean()
-                avg_confidence_in_bin = confidences[in_bin].mean()
-                ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
-
-        return ece

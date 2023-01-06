@@ -22,7 +22,7 @@ if __name__ == '__main__':
     trainer = UnlabeledValidationExtraStepTrainer(
         unlabeled_val_loop=True,
         accelerator='gpu',
-        devices=[6, 7],
+        devices=[2, 3],
         strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
         max_epochs=300,
         deterministic=True,
@@ -61,7 +61,9 @@ if __name__ == '__main__':
         temperature=3.0,
         keep_old_preds=True,
         monitor="val_ExpRate/dataloader_idx_0",
-        logit_norm_temp=0.05
+        logit_norm_temp=0.05,
+        th_optim_correct_weight=9,
+        th_optim_sharpening=50
     )
 
     trainer.fit(model, dm)

@@ -18,9 +18,7 @@ class Oracle:
     def __init__(self, data: 'np.ndarray[Any, np.dtype[DataEntry]]'):
         self.label_dict = {}
         self.label_idx_dict = {}
-        for entry in data:
-            self.label_dict[entry.file_name] = entry.label
-            self.label_idx_dict[entry.file_name] = vocab.words2indices(entry.label)
+        self.add_data(data)
 
     def confidence_indices(self, fname: str, pred: List[int]):
         return _general_confidence(self.label_idx_dict[fname], pred)
@@ -36,3 +34,8 @@ class Oracle:
 
     def get_gt_indices(self, fname: str):
         return self.label_idx_dict[fname]
+
+    def add_data(self, data: 'np.ndarray[Any, np.dtype[DataEntry]]'):
+        for entry in data:
+            self.label_dict[entry.file_name] = entry.label
+            self.label_idx_dict[entry.file_name] = vocab.words2indices(entry.label)

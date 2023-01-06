@@ -1,5 +1,7 @@
+import itertools
 import math
 import multiprocessing
+import os
 from collections import defaultdict
 from typing import List, Dict, Tuple
 from zipfile import ZipFile
@@ -20,7 +22,9 @@ from comer.datamodules.crohme.dataset import W_LO, H_LO, H_HI, W_HI
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.datamodules.utils.randaug import RandAugment
 from comer.datamodules.utils.transforms import ScaleToLimitRange
-from comer.modules import CoMERSupervised
+from comer.modules import CoMERSupervised, CoMERFixMatchInterleavedTemperatureScaling, \
+    CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm
+from comer.utils import ECELoss
 from comer.utils.utils import Hypothesis, to_bi_tgt_out
 import torch.nn.functional as F
 
@@ -125,7 +129,7 @@ def single_step(input_tuple: Tuple[float, Dict[str, Hypothesis], Oracle]):
     return calc_min(input_tuple[0], input_tuple[1], input_tuple[2], 1.0), input_tuple[0]
 
 
-def main(gpu: int = 6):
+def main(gpu: int = 1):
     print("init")
     print(f"- gpu: cuda:{gpu}")
     print(f"- cp: {checkpoint_path}")
@@ -135,55 +139,194 @@ def main(gpu: int = 6):
         device = torch.device(f"cuda:{gpu}")
 
     with torch.no_grad():
-        model: CoMERSupervised = CoMERSupervised.load_from_checkpoint(checkpoint_path, temperature=100)
-        model = model.eval().to(device)
-        model.share_memory()
+        # model: CoMERSupervised = CoMERSupervised.load_from_checkpoint(checkpoint_path, temperature=100)
+        # model = model.eval().to(device)
+        # model.share_memory()
 
         print("model loaded")
 
         with ZipFile("data.zip") as archive:
             seed_everything(7)
-            full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train",
+            full_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train",
                                                                                            to_device=device)
+            full_data_test: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "2019",
+                                                                                           to_device=device)
+            oracle = Oracle(full_data)
+            oracle.add_data(full_data_test)
+
             labeled_indices, unlabeled_indices = get_splitted_indices(
-                full_train_data,
-                unlabeled_pct=0.85,
+                full_data,
+                unlabeled_pct=0.65,
                 sorting_mode=1
             )
-            labeled_data, unlabeled_data = full_train_data[labeled_indices], full_train_data[
+            labeled_data, unlabeled_data = full_data[labeled_indices], full_data[
                 unlabeled_indices]
 
             pseudo_labeling_batches = build_batches_from_samples(
                 unlabeled_data,
                 4
             )
+            test_batches = build_batches_from_samples(
+                full_data_test,
+                4
+            )
 
-            all_hyps = {}
 
-            for batch_raw in pseudo_labeling_batches:
-                batch = collate_fn([batch_raw]).to(device=device)
-                hyps: List[Hypothesis] = model.approximate_joint_search(batch.imgs, batch.mask, use_new=True, debug=False, save_logits=False)
-                for i, hyp in enumerate(hyps):
-                    all_hyps[batch.img_bases[i]] = hyp
-                    print(vocab.indices2words(hyp.seq))
-                    print("best normal")
-                    print(hyp.raw_logits)
-                    print("best rev")
-                    print(hyp.raw_logits_rev)
-                    tgt, out = to_bi_tgt_out(batch.labels, device)
-                    print("supervised")
-                    raw = model(batch.imgs, batch.mask, tgt)
-                    print(raw[0])
-                    print(raw[len(batch.labels)])
-                    exit(1)
-            #
-            # torch.save(all_hyps, "hyps_st_15_tmp_100_noglobal.pt")
-            # oracle = Oracle(full_train_data)
+            cps = [
+                ("./lightning_logs/version_64/checkpoints/epoch=177-step=46814-val_ExpRate=0.5079.ckpt", "t0_02"),
+                ("./lightning_logs/version_70/checkpoints/epoch=209-step=55230-val_ExpRate=0.5254.ckpt", "t0_04"),
+                ("./lightning_logs/version_65/checkpoints/epoch=239-step=63120-val_ExpRate=0.5463.ckpt", "t0_05"),
+                ("./lightning_logs/version_69/checkpoints/epoch=207-step=54704-val_ExpRate=0.5513.ckpt", "t0_075"),
+                ("./lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt", "t0_1"),
+                ("./lightning_logs/version_67/checkpoints/epoch=211-step=55756-val_ExpRate=0.5146.ckpt", "t0_2"),
+                ("./lightning_logs/version_68/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt", "t0_5"),
+                # ("./lightning_logs/version_71/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt", "t0_0625"),
+            ]
+            ece = ECELoss()
+
+            def hyp_to_triplet_ori(fname_and_hyp: Tuple[str, Hypothesis]):
+                fname, hyp = fname_and_hyp
+                hyp_len = len(hyp.seq)
+                return (math.exp(score_avg(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
+            def hyp_to_triplet_avg(fname_and_hyp: Tuple[str, Hypothesis]):
+                fname, hyp = fname_and_hyp
+                hyp_len = len(hyp.seq)
+                return (math.exp(score_sum(hyp) / hyp_len) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
+
+            def hyp_to_triplet_bimin(fname_and_hyp: Tuple[str, Hypothesis]):
+                fname, hyp = fname_and_hyp
+                hyp_len = len(hyp.seq)
+                return (math.exp(score_bimin(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
+
+            scoring_fns = [
+                ("original", hyp_to_triplet_ori),
+                ("sum", hyp_to_triplet_avg),
+                ("bimin", hyp_to_triplet_bimin),
+            ]
+            scoring_fn_names = [name for (name, _) in scoring_fns]
+
+            total_batches = len(pseudo_labeling_batches) + len(test_batches)
+            total_pseudo_batches = len(pseudo_labeling_batches)
+            ten_pct_steps = np.floor(np.linspace(0, total_batches, 10, endpoint=False))
+
+            to_test_temps = [1]
+            to_test_data_sets = [
+                ("", pseudo_labeling_batches),
+                ("_test", test_batches)
+            ]
+
+            with torch.inference_mode():
+                for (cp, name) in cps:
+                    model = None
+                    torch.cuda.empty_cache()
+                    all_hyps = {}
+
+                    print(f"Loading {cp}...")
+                    model: CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm \
+                        = CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm.load_from_checkpoint(
+                        cp,
+                    )
+                    model = model.eval().to(device)
+                    model.share_memory()
+                    print("model loaded")
+
+
+                    for (save_ds_suffix, set) in to_test_data_sets:
+                        for temp in to_test_temps:
+                            save_path = f"./hyps_s_35_{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
+                            exists = os.path.exists(save_path)
+                            if not exists:
+                                ten_pct_steps = np.floor(np.linspace(0, len(set), 10, endpoint=False))
+                                print(f"LN {name}{save_ds_suffix}, progress: ", end="", flush=True)
+                                progress = 0
+                                all_hyps[save_path] = {}
+                                all_hyps_save_path = all_hyps[save_path]
+                                for i, batch_raw in enumerate(set):
+                                    if i in ten_pct_steps:
+                                        print(progress, end="", flush=True)
+                                        progress += 1
+                                    batch = collate_fn([batch_raw]).to(device=device)
+                                    hyps = model.approximate_joint_search(
+                                        batch.imgs, batch.mask, use_new=True, debug=False, save_logits=False, temperature=temp
+                                    )
+                                    for i, hyp in enumerate(hyps):
+                                        all_hyps_save_path[batch.img_bases[i]] = hyp
+                                torch.save(all_hyps_save_path, save_path)
+                                print(" saved")
+                            else:
+                                all_hyps[save_path] = torch.load(save_path, map_location=device)
+                                print(f"LN {name} loaded from save")
+                    # do the actual eval
+                    for (save_ds_suffix, _) in to_test_data_sets:
+                        pct_slots = list(itertools.repeat("", len(to_test_temps) + len(scoring_fns) * len(to_test_temps)))
+
+                        for temp_idx, temp in enumerate(to_test_temps):
+                            save_path = f"./hyps_s_35_{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
+                            for i, (_, tf) in enumerate(scoring_fns):
+                                ece_score, acc = ece.ece_for_predictions(map(tf, all_hyps[save_path].items()))
+                                pct_slots[temp_idx] = f"{acc * 100:.2f}"
+                                pct_slots[len(to_test_temps) + i + temp_idx * len(scoring_fns)] = f"{ece_score * 100:.2f}"
+
+                        print(f"{name}{save_ds_suffix}", f"ts: {model.current_temperature.item()}, temps: {to_test_temps}, confs: {scoring_fn_names}")
+                        print("\t".join(pct_slots[:len(to_test_temps)]), end="")
+                        print("\t\t", end="")
+                        for i in range(len(to_test_temps)):
+                            print("\t".join(pct_slots[len(to_test_temps)+i*len(scoring_fns):len(to_test_temps)+(i+1)*len(scoring_fns)]), end="")
+                            print("\t\t", end="")
+                        print()
+
+
+
+
+
+            # for idx in [1, 2, 3, 4, 5, 10, 100]:
+            #     if idx != 1:
+            #         hyp_file = f"../hyps_st_15_tmp_{idx}.pt"
+            #         hyp_file_noglob = f"../hyps_st_15_tmp_{idx}_noglobal.pt"
+            #     else:
+            #         hyp_file = f"../hyps_st_15.pt"
+            #         hyp_file_noglob = ""
+            #     ece_score, acc = None, None
+            #     ece_score_noglob, acc_noglob = None, None
+            #     if len(hyp_file) > 0:
+            #         all_hyps: Dict[str, Hypothesis] = torch.load(hyp_file,
+            #                                                      map_location=torch.device('cpu'))
+            #         ece_score, acc = ece.ece_for_predictions(map(hyp_to_triplet, all_hyps.items()))
+            #     if len(hyp_file_noglob) > 0:
+            #         all_hyps: Dict[str, Hypothesis] = torch.load(hyp_file_noglob,
+            #                                                      map_location=torch.device('cpu'))
+            #         ece_score_noglob, acc_noglob = ece.ece_for_predictions(map(hyp_to_triplet, all_hyps.items()))
+            #     if ece_score is not None:
+            #         print(f"{idx}\t\t{ece_score * 100:.2f} ({acc * 100:.2f})", end="")
+            #     if ece_score_noglob is not None:
+            #         print(f"\t\t{ece_score_noglob * 100:.2f} ({acc_noglob * 100:.2f})")
+            #     else:
+            #         print()
             #
             # th = math.log(0.64618)
             #
             # all_hyps: Dict[str, Hypothesis] = torch.load("../hyps_st_15_tmp_3_noglobal.pt",
             #                                              map_location=torch.device('cpu'))
+
+            # saved_hyp_files = [
+            #     "../hyps_st_15.pt",
+            #     "../hyps_st_15_tmp_2.pt",
+            #     "../hyps_st_15_tmp_3.pt",
+            #     "../hyps_st_15_tmp_4.pt",
+            #     "../hyps_st_15_tmp_5.pt",
+            #     "../hyps_st_15_tmp_10.pt",
+            #     "../hyps_st_15_tmp_100.pt",
+            #     "../hyps_st_15_tmp_2_noglobal.pt",
+            #     "../hyps_st_15_tmp_3_noglobal.pt",
+            #     "../hyps_st_15_tmp_4_noglobal.pt",
+            #     "../hyps_st_15_tmp_5_noglobal.pt",
+            #     "../hyps_st_15_tmp_10_noglobal.pt",
+            #     "../hyps_st_15_tmp_100_noglobal.pt",
+            # ]
+            #
+
+
+
             # correct_hyps = 0
             # correct_median = 0
             #
