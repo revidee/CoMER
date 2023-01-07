@@ -1,25 +1,11 @@
-from zipfile import ZipFile
+from pytorch_lightning import seed_everything
 
 from pytorch_lightning import seed_everything
-from torch.utils.data import DataLoader
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 
-from comer.datamodules.crohme import CROHMEDataset, build_dataset
-from comer.datamodules.crohme.variants.collate import collate_fn
-from comer.datamodules.crohme.variants.fixmatch import CROHMEFixMatchDatamodule
-from comer.datamodules.crohme.variants.fixmatch_inter_oracle import CROHMEFixMatchOracleDatamodule
 from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from comer.datamodules import CROHMESelfTrainingDatamodule
-from comer.modules import CoMERSelfTraining
-from comer.modules.fixmatch import CoMERFixMatch
-from comer.modules.fixmatch_inter_oracle import CoMERFixMatchOracleInterleaved
-from comer.modules.fixmatch_interleaved import CoMERFixMatchInterleaved
-from comer.modules.fixmatch_sorted_fixed_pct import CoMERFixMatchInterleavedFixedPct
-from comer.modules.fixmatch_sorted_fixed_pct_temp_scale import CoMERFixMatchInterleavedFixedPctTemperatureScaling
-from comer.modules.fixmatch_sorted_fixed_pct_temp_scale_logit_norm import \
-    CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm
-from comer.modules.fixmatch_temp_scale import CoMERFixMatchInterleavedTemperatureScaling
+from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale
 
 if __name__ == '__main__':
     seed_everything(7)
@@ -27,12 +13,12 @@ if __name__ == '__main__':
     trainer = UnlabeledValidationExtraStepTrainer(
         unlabeled_val_loop=True,
         accelerator='gpu',
-        devices=[2, 3],
+        devices=[6, 7],
         strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
         max_epochs=300,
         deterministic=True,
-        reload_dataloaders_every_n_epochs=2,
-        check_val_every_n_epoch=2,
+        reload_dataloaders_every_n_epochs=1,
+        check_val_every_n_epoch=1,
         callbacks=[
             LearningRateMonitor(logging_interval='epoch'),
             ModelCheckpoint(save_top_k=1,
@@ -56,17 +42,17 @@ if __name__ == '__main__':
         unlabeled_weak_aug=""
     )
 
-    model: CoMERFixMatch = CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm.load_from_checkpoint(
-        './lightning_logs/version_69/checkpoints/epoch=207-step=54704-val_ExpRate=0.5513.ckpt',
+    model: CoMERFixMatchInterleavedLogitNormTempScale = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
+        './lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt',
         strict=False,
-        learning_rate=0.0008,
+        learning_rate=0.002,
         patience=20,
-        pseudo_labeling_threshold=0.2,
+        pseudo_labeling_threshold=0.975,
         lambda_u=1.0,
         temperature=3.0,
         keep_old_preds=True,
         monitor="val_ExpRate/dataloader_idx_0",
-        logit_norm_temp=0.05,
+        logit_norm_temp=0.1,
         th_optim_correct_weight=9,
         th_optim_sharpening=50
     )

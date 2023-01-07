@@ -9,6 +9,7 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
 
     def __init__(self,
                  logit_norm_temp: float,
+                 keep_old_preds: bool,
                  **kwargs):
         super().__init__(**kwargs)
         self.save_hyperparameters()
@@ -46,4 +47,4 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
             loss = ce_logitnorm_loss(out_hat, out, self.logit_temp)
 
         self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch_size)
-        return loss + 0.0 * self.current_temperature
+        return loss

@@ -22,8 +22,8 @@ from comer.datamodules.crohme.dataset import W_LO, H_LO, H_HI, W_HI
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.datamodules.utils.randaug import RandAugment
 from comer.datamodules.utils.transforms import ScaleToLimitRange
-from comer.modules import CoMERSupervised, CoMERFixMatchInterleavedTemperatureScaling, \
-    CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm
+from comer.modules import CoMERFixMatchInterleavedFixedPctLogitNormTempScale, CoMERSupervised, \
+    CoMERFixMatchInterleavedLogitNormTempScale
 from comer.utils import ECELoss
 from comer.utils.utils import Hypothesis, to_bi_tgt_out
 import torch.nn.functional as F
@@ -129,7 +129,7 @@ def single_step(input_tuple: Tuple[float, Dict[str, Hypothesis], Oracle]):
     return calc_min(input_tuple[0], input_tuple[1], input_tuple[2], 1.0), input_tuple[0]
 
 
-def main(gpu: int = 1):
+def main(gpu: int = 0):
     print("init")
     print(f"- gpu: cuda:{gpu}")
     print(f"- cp: {checkpoint_path}")
@@ -173,17 +173,23 @@ def main(gpu: int = 1):
 
 
             cps = [
-                # ("./lightning_logs/version_64/checkpoints/epoch=177-step=46814-val_ExpRate=0.5079.ckpt", "t0_02"),
-                # ("./lightning_logs/version_70/checkpoints/epoch=209-step=55230-val_ExpRate=0.5254.ckpt", "t0_04"),
-                # ("./lightning_logs/version_65/checkpoints/epoch=239-step=63120-val_ExpRate=0.5463.ckpt", "t0_05"),
-                ("./lightning_logs/version_69/checkpoints/epoch=207-step=54704-val_ExpRate=0.5513.ckpt", "t0_075"),
-                # ("./lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt", "t0_1"),
-                # ("./lightning_logs/version_67/checkpoints/epoch=211-step=55756-val_ExpRate=0.5146.ckpt", "t0_2"),
-                # ("./lightning_logs/version_68/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt", "t0_5"),
-                # ("./lightning_logs/version_71/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt", "t0_0625"),
-                ("./lightning_logs/version_69/checkpoints/optimized_ts_0.556297.ckpt", "t0_075_opt"),
+                # ("./lightning_logs/version_64/checkpoints/optimized_ts_0.5146.ckpt", "t0_02_opt"),
+                # ("./lightning_logs/version_70/checkpoints/optimized_ts_0.5405.ckpt", "t0_04_opt"),
+                # ("./lightning_logs/version_65/checkpoints/optimized_ts_0.5505.ckpt", "t0_05_opt"),
+                ("./lightning_logs/version_71/checkpoints/epoch=197-step=52074-val_ExpRate=0.5321.ckpt", "t0_0625"),
+                # ("./lightning_logs/version_71/checkpoints/optimized_ts_0.5338.ckpt", "t0_0625_opt"),
+                # ("./lightning_logs/version_69/checkpoints/optimized_ts_0.556297.ckpt", "t0_075_opt"),
+                # ("./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt", "t0_1_opt"),
+                # ("./lightning_logs/version_67/checkpoints/optimized_ts_0.5038.ckpt", "t0_2_opt"),
+                # ("./lightning_logs/version_68/checkpoints/optimized_ts_0.4829.ckpt", "t0_5_opt"),
+                # ("./lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt", "original"),
             ]
-            ece = ECELoss(conf_range=(0.9, 1.0))
+            to_test_temps = [1, 3]
+            to_test_data_sets = [
+                ("_test", test_batches),
+                ("", pseudo_labeling_batches),
+            ]
+            ece = ECELoss()
 
             def hyp_to_triplet_ori(fname_and_hyp: Tuple[str, Hypothesis]):
                 fname, hyp = fname_and_hyp
@@ -210,11 +216,7 @@ def main(gpu: int = 1):
             total_pseudo_batches = len(pseudo_labeling_batches)
             ten_pct_steps = np.floor(np.linspace(0, total_batches, 10, endpoint=False))
 
-            to_test_temps = [None]
-            to_test_data_sets = [
-                ("", pseudo_labeling_batches),
-                ("_test", test_batches)
-            ]
+
 
             with torch.inference_mode():
                 for (cp, name) in cps:
@@ -223,9 +225,9 @@ def main(gpu: int = 1):
                     all_hyps = {}
 
                     print(f"Loading {cp}...")
-                    model: CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm \
-                        = CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm.load_from_checkpoint(
-                        cp,
+                    model: CoMERFixMatchInterleavedLogitNormTempScale \
+                        = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
+                        cp
                     )
                     model = model.eval().to(device)
                     model.share_memory()
@@ -267,8 +269,10 @@ def main(gpu: int = 1):
                                 ece_score, acc = ece.ece_for_predictions(map(tf, all_hyps[save_path].items()))
                                 pct_slots[temp_idx] = f"{acc * 100:.2f}"
                                 pct_slots[len(to_test_temps) + i + temp_idx * len(scoring_fns)] = f"{ece_score * 100:.2f}"
-
-                        print(f"{name}{save_ds_suffix}", f"ts: {model.current_temperature.item()}, temps: {to_test_temps}, confs: {scoring_fn_names}")
+                        curr_temp = 1.0
+                        if hasattr(model, "current_temperature"):
+                            curr_temp = model.current_temperature.item()
+                        print(f"{name}{save_ds_suffix}", f"ts: {curr_temp}, temps: {to_test_temps}, confs: {scoring_fn_names}")
                         print("\t".join(pct_slots[:len(to_test_temps)]), end="")
                         print("\t\t", end="")
                         for i in range(len(to_test_temps)):

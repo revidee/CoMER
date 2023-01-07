@@ -131,16 +131,20 @@ class CoMERSupervised(pl.LightningModule):
                 for img_base, pred, length, score in zip(img_bases, preds, lens, scores):
                     file.write(f"{img_base},{pred},{length},{score}\n")
             file.close()
-
-
     def approximate_joint_search(
-        self, img: FloatTensor, mask: LongTensor, use_new: bool = True, save_logits: bool = False, debug=False
+            self, img: FloatTensor, mask: LongTensor, use_new: bool = True,
+            save_logits: bool = False, debug=False, temperature=None
     ) -> List[Hypothesis]:
+        if temperature is None:
+            temperature = 1
+        hp = dict(self.hparams)
+        del hp["temperature"]
         if use_new:
             return self.comer_model.new_beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True, save_logits=save_logits, debug=debug)
         return self.comer_model.beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True, debug=debug)
 
-    def configure_optimizers(self):
+
+def configure_optimizers(self):
         optimizer = optim.SGD(
             self.parameters(),
             lr=self.hparams.learning_rate,
