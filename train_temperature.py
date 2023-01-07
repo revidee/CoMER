@@ -1,5 +1,7 @@
+from pathlib import Path
 from zipfile import ZipFile
 
+import torch.cuda
 from pytorch_lightning import seed_everything
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from torch.utils.data import DataLoader
@@ -46,48 +48,64 @@ if __name__ == '__main__':
         unlabeled_weak_aug=""
     )
 
-    model: CoMERFixMatchInterleavedLogitNormTempScale = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
-        './lightning_logs/version_69/checkpoints/epoch=207-step=54704-val_ExpRate=0.5513.ckpt',
-        strict=False,
-        learning_rate=0.0008,
-        patience=20,
-        pseudo_labeling_threshold=0.2,
-        lambda_u=1.0,
-        temperature=3.0,
-        keep_old_preds=True,
-        monitor="val_ExpRate/dataloader_idx_0",
-        logit_norm_temp=0.05,
-        th_optim_correct_weight=9,
-        th_optim_sharpening=50
-    )
-    model.set_verbose_temp_scale_optim(True)
+    cps = [
+        ("./lightning_logs/version_64/checkpoints/epoch=177-step=46814-val_ExpRate=0.5079.ckpt"),
+        ("./lightning_logs/version_70/checkpoints/epoch=209-step=55230-val_ExpRate=0.5254.ckpt"),
+        ("./lightning_logs/version_65/checkpoints/epoch=239-step=63120-val_ExpRate=0.5463.ckpt"),
+        ("./lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt"),
+        ("./lightning_logs/version_67/checkpoints/epoch=211-step=55756-val_ExpRate=0.5146.ckpt"),
+        ("./lightning_logs/version_68/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt"),
+        ("./lightning_logs/version_71/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt"),
+    ]
 
-    with ZipFile("data.zip") as f:
-        trainer.validate(model, DataLoader(
-            CROHMEDataset(
-                build_dataset(f, "2019", 4)[0],
-                "",
-                "",
-            ),
-            shuffle=False,
-            num_workers=5,
-            collate_fn=collate_fn,
-        ))
-        print("Re-evaluating with NLL/ECE optimized temperature...")
-        trainer.validate(model, DataLoader(
-            CROHMEDataset(
-                build_dataset(f, "2019", 4)[0],
-                "",
-                "",
-            ),
-            shuffle=False,
-            num_workers=5,
-            collate_fn=collate_fn,
-        ))
-        print(trainer.logged_metrics)
-        trainer.save_checkpoint(
-            f'./lightning_logs/version_69/checkpoints/optimized_ts_{trainer.logged_metrics["val_ExpRate"]:.4f}.ckpt',
-            False
+    for cp_path in cps:
+        torch.cuda.empty_cache()
+        p = Path(cp_path)
+        if not p.exists():
+            print(f"Checkpoint '{cp_path}' not found, skipping.")
+            continue
+
+        model: CoMERFixMatchInterleavedLogitNormTempScale = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
+            cp_path,
+            strict=False,
+            learning_rate=0.0008,
+            patience=20,
+            pseudo_labeling_threshold=0.2,
+            lambda_u=1.0,
+            temperature=3.0,
+            keep_old_preds=True,
+            monitor="val_ExpRate/dataloader_idx_0",
+            logit_norm_temp=0.05,
+            th_optim_correct_weight=9,
+            th_optim_sharpening=50
         )
+        model.set_verbose_temp_scale_optim(True)
+
+        with ZipFile("data.zip") as f:
+            trainer.validate(model, DataLoader(
+                CROHMEDataset(
+                    build_dataset(f, "2019", 4)[0],
+                    "",
+                    "",
+                ),
+                shuffle=False,
+                num_workers=5,
+                collate_fn=collate_fn,
+            ))
+            print("Re-evaluating with NLL/ECE optimized temperature...")
+            trainer.validate(model, DataLoader(
+                CROHMEDataset(
+                    build_dataset(f, "2019", 4)[0],
+                    "",
+                    "",
+                ),
+                shuffle=False,
+                num_workers=5,
+                collate_fn=collate_fn,
+            ))
+            trainer.save_checkpoint(
+                p.parent.joinpath(f'optimized_ts_{trainer.logged_metrics["val_ExpRate"]:.4f}.ckpt'),
+                False
+            )
 
 
