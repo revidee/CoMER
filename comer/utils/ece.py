@@ -20,15 +20,18 @@ class ECELoss(torch.nn.Module):
     "Obtaining Well Calibrated Probabilities Using Bayesian Binning." AAAI.
     2015.
     """
-    def __init__(self, n_bins=15):
+    def __init__(self, n_bins=15, conf_range=(0.0, 1.0)):
         """
         n_bins (int): number of confidence interval bins
         """
         super(ECELoss, self).__init__()
-        bin_boundaries = torch.linspace(0, 1, n_bins + 1)
+        bin_boundaries = torch.linspace(conf_range[0], conf_range[1], n_bins + 1)
         self.n_bins = n_bins
         self.bin_lowers = bin_boundaries[:-1]
         self.bin_uppers = bin_boundaries[1:]
+
+        self.conf_range = conf_range
+        self.conf_range_width = conf_range[1] - conf_range[0]
 
         self.bin_sum_confs = []
         self.bin_sum_corr = []
@@ -69,7 +72,10 @@ class ECELoss(torch.nn.Module):
                 - Label
         """
         for (score, pred, label) in predictions:
-            bin_idx = int(math.floor(score * self.n_bins))
+            if score < self.conf_range[0] or score > self.conf_range[1]:
+                continue
+
+            bin_idx = int(math.floor(((score - self.conf_range[0]) / self.conf_range_width) * self.n_bins))
             if bin_idx >= self.n_bins:
                 bin_idx = self.n_bins - 1
             self.bin_sum_confs[bin_idx] += score

@@ -173,16 +173,17 @@ def main(gpu: int = 1):
 
 
             cps = [
-                ("./lightning_logs/version_64/checkpoints/epoch=177-step=46814-val_ExpRate=0.5079.ckpt", "t0_02"),
-                ("./lightning_logs/version_70/checkpoints/epoch=209-step=55230-val_ExpRate=0.5254.ckpt", "t0_04"),
-                ("./lightning_logs/version_65/checkpoints/epoch=239-step=63120-val_ExpRate=0.5463.ckpt", "t0_05"),
+                # ("./lightning_logs/version_64/checkpoints/epoch=177-step=46814-val_ExpRate=0.5079.ckpt", "t0_02"),
+                # ("./lightning_logs/version_70/checkpoints/epoch=209-step=55230-val_ExpRate=0.5254.ckpt", "t0_04"),
+                # ("./lightning_logs/version_65/checkpoints/epoch=239-step=63120-val_ExpRate=0.5463.ckpt", "t0_05"),
                 ("./lightning_logs/version_69/checkpoints/epoch=207-step=54704-val_ExpRate=0.5513.ckpt", "t0_075"),
-                ("./lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt", "t0_1"),
-                ("./lightning_logs/version_67/checkpoints/epoch=211-step=55756-val_ExpRate=0.5146.ckpt", "t0_2"),
-                ("./lightning_logs/version_68/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt", "t0_5"),
+                # ("./lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt", "t0_1"),
+                # ("./lightning_logs/version_67/checkpoints/epoch=211-step=55756-val_ExpRate=0.5146.ckpt", "t0_2"),
+                # ("./lightning_logs/version_68/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt", "t0_5"),
                 # ("./lightning_logs/version_71/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt", "t0_0625"),
+                ("./lightning_logs/version_69/checkpoints/optimized_ts_0.556297.ckpt", "t0_075_opt"),
             ]
-            ece = ECELoss()
+            ece = ECELoss(conf_range=(0.9, 1.0))
 
             def hyp_to_triplet_ori(fname_and_hyp: Tuple[str, Hypothesis]):
                 fname, hyp = fname_and_hyp
@@ -209,7 +210,7 @@ def main(gpu: int = 1):
             total_pseudo_batches = len(pseudo_labeling_batches)
             ten_pct_steps = np.floor(np.linspace(0, total_batches, 10, endpoint=False))
 
-            to_test_temps = [1]
+            to_test_temps = [None]
             to_test_data_sets = [
                 ("", pseudo_labeling_batches),
                 ("_test", test_batches)
