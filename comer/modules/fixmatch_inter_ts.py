@@ -209,9 +209,9 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         # sync this manual param optimization across all gpus.
         # since otherwise, this would only be synced at the start of the next forward pass.
         # to ensure all computations until then are consistent, we shall do an extra sync here.
-        all_gpu_temp: List[Tensor] = [torch.zeros(1, dtype=torch.float) for _ in range(dist.get_world_size())]
+        all_gpu_temp: List[Tensor] = [torch.zeros(1, dtype=torch.float, device=self.device) for _ in range(dist.get_world_size())]
         dist.barrier()
-        dist.all_gather(all_gpu_temp, self.current_temperature)
+        dist.all_gather(all_gpu_temp, torch.ones(1, device=self.device) * self.current_temperature.item())
         self.current_temperature = torch.nn.Parameter(
             torch.ones(1, device=self.device) * all_gpu_temp[0].to(self.device)
         )

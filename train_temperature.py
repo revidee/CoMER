@@ -10,43 +10,12 @@ from comer.datamodules.crohme import CROHMEDataset, build_dataset
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
+from comer.modules import CoMERFixMatchInterleavedFixedPctLogitNormTempScale
 from comer.modules.fixmatch_inter_logitnorm_ts import CoMERFixMatchInterleavedLogitNormTempScale
 
 if __name__ == '__main__':
-    seed_everything(7)
 
-    trainer = UnlabeledValidationExtraStepTrainer(
-        unlabeled_val_loop=True,
-        accelerator='gpu',
-        devices=[2, 3],
-        strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
-        max_epochs=300,
-        deterministic=True,
-        reload_dataloaders_every_n_epochs=2,
-        check_val_every_n_epoch=2,
-        callbacks=[
-            LearningRateMonitor(logging_interval='epoch'),
-            ModelCheckpoint(save_top_k=1,
-                            monitor='val_ExpRate/dataloader_idx_0',
-                            mode='max',
-                            filename='ep={epoch}-st={step}-valLoss={val_ExpRate/dataloader_idx_0:.4f}',
-                            auto_insert_metric_name=False
-                            ),
-        ],
-        precision=32,
-        inference_mode=False
-    )
-    dm = CROHMEFixMatchInterleavedDatamodule(
-        test_year='2019',
-        eval_batch_size=4,
-        zipfile_path='data.zip',
-        train_batch_size=8,
-        num_workers=5,
-        unlabeled_pct=0.65,
-        train_sorting=1,
-        unlabeled_strong_aug="weak",
-        unlabeled_weak_aug=""
-    )
+
 
     cps = [
         ("./lightning_logs/version_64/checkpoints/epoch=177-step=46814-val_ExpRate=0.5079.ckpt"),
@@ -59,13 +28,46 @@ if __name__ == '__main__':
     ]
 
     for cp_path in cps:
+        seed_everything(7)
+        trainer = UnlabeledValidationExtraStepTrainer(
+            unlabeled_val_loop=True,
+            accelerator='gpu',
+            devices=[0, 1, 6, 7],
+            strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
+            max_epochs=300,
+            deterministic=True,
+            reload_dataloaders_every_n_epochs=2,
+            check_val_every_n_epoch=2,
+            callbacks=[
+                LearningRateMonitor(logging_interval='epoch'),
+                ModelCheckpoint(save_top_k=1,
+                                monitor='val_ExpRate/dataloader_idx_0',
+                                mode='max',
+                                filename='ep={epoch}-st={step}-valLoss={val_ExpRate/dataloader_idx_0:.4f}',
+                                auto_insert_metric_name=False
+                                ),
+            ],
+            precision=32,
+            inference_mode=False
+        )
+        dm = CROHMEFixMatchInterleavedDatamodule(
+            test_year='2019',
+            eval_batch_size=4,
+            zipfile_path='data.zip',
+            train_batch_size=8,
+            num_workers=5,
+            unlabeled_pct=0.65,
+            train_sorting=1,
+            unlabeled_strong_aug="weak",
+            unlabeled_weak_aug=""
+        )
         torch.cuda.empty_cache()
         p = Path(cp_path)
         if not p.exists():
             print(f"Checkpoint '{cp_path}' not found, skipping.")
             continue
 
-        model: CoMERFixMatchInterleavedLogitNormTempScale = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
+        model: CoMERFixMatchInterleavedFixedPctLogitNormTempScale = CoMERFixMatchInterleavedFixedPctLogitNormTempScale.load_from_checkpoint(
             cp_path,
             strict=False,
             learning_rate=0.0008,
@@ -73,7 +75,6 @@ if __name__ == '__main__':
             pseudo_labeling_threshold=0.2,
             lambda_u=1.0,
             temperature=3.0,
-            keep_old_preds=True,
             monitor="val_ExpRate/dataloader_idx_0",
             logit_norm_temp=0.05,
             th_optim_correct_weight=9,

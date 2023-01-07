@@ -6,10 +6,9 @@ import torch
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
 
 from comer.datamodules.crohme import Batch, vocab
-from comer.modules import CoMERFixMatchInterleaved
 import torch.distributed as dist
 
-from comer.modules.fixmatch_temp_scale import CoMERFixMatchInterleavedTemperatureScaling
+from comer.modules import CoMERFixMatchInterleavedTemperatureScaling
 
 
 class CoMERFixMatchInterleavedFixedPctTemperatureScaling(CoMERFixMatchInterleavedTemperatureScaling):
