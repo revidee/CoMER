@@ -151,7 +151,7 @@ def ce_logitnorm_loss(
     Returns:
         torch.Tensor: loss value
     """
-    mod_hat = output_hat / (temperature * LA.vector_norm(output_hat, dim=-1, keepdim=True))
+    mod_hat = output_hat / (temperature * (LA.vector_norm(output_hat, dim=-1, keepdim=True) + 1e-7))
     flat_hat = rearrange(mod_hat, "b l e -> (b l) e")
     flat = rearrange(output, "b l -> (b l)")
     loss = F.cross_entropy(flat_hat, flat, ignore_index=ignore_idx, reduction=reduction)
