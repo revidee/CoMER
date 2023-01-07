@@ -217,7 +217,9 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         all_gpu_temp: List[Tensor] = [torch.zeros(1, dtype=torch.float, device=self.device) for _ in range(dist.get_world_size())]
         dist.barrier()
         dist.all_gather(all_gpu_temp, torch.ones(1, device=self.device) * self.current_temperature.item())
-        self.current_temperature = torch.ones(1, device=self.device) * all_gpu_temp[0].to(self.device)
+        self.current_temperature = torch.nn.Parameter(
+            torch.ones(1, device=self.device) * all_gpu_temp[0].to(self.device), requires_grad=False
+        )
 
 
 
