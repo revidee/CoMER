@@ -1,8 +1,8 @@
-import itertools
-import math
 from typing import Union, List, Tuple
 
 import torch
+import torch.distributed as dist
+import torch.nn.functional as F
 from einops import rearrange
 from torch import LongTensor, FloatTensor, Tensor, optim
 
@@ -11,9 +11,6 @@ from comer.modules import CoMERFixMatchInterleaved
 from comer.utils import ECELoss
 from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out, Hypothesis)
-
-import torch.distributed as dist
-import torch.nn.functional as F
 
 
 class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
@@ -139,8 +136,6 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
             def eval_curr_temp():
                 optimizer.zero_grad()
-                # loss = F.cross_entropy(logits / self.current_temperature, labels,
-                #                        ignore_index=vocab.PAD_IDX, reduction="mean")
                 loss = ece_criterion(logits / self.current_temperature, labels) \
                        + F.cross_entropy(logits / self.current_temperature, labels,
                                          ignore_index=vocab.PAD_IDX, reduction="mean")
@@ -161,6 +156,9 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                     after_temperature_ece = ece_criterion(logits / self.current_temperature, labels).item()
                     print(f'Optimal temperature: {self.current_temperature.item():.3f}')
                     print(f'After temperature - NLL: {after_temperature_nll:.3f}, ECE: {after_temperature_ece:.3f}')
+
+                # Find best confidence threshold for pseudo-labeling.
+                # TODO: Move from learnable to heuristic, that's why it's currently disabled
                 if total_correct > 0 and False:
                     threshold = torch.nn.Parameter(torch.ones(1, device=self.device) * 0.5)
                     optimizer = optim.LBFGS([threshold], lr=0.01, max_iter=1000)

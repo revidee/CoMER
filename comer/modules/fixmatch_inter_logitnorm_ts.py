@@ -1,22 +1,14 @@
-import math
-from typing import Callable, List, Iterable, Tuple, Union
-
-import numpy as np
 import torch
-from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
-from torch import optim
 
-from comer.datamodules.crohme import Batch, vocab
-
-from comer.modules.fixmatch_sorted_fixed_pct_temp_scale import CoMERFixMatchInterleavedFixedPctTemperatureScaling
-from comer.utils.utils import ce_loss, to_bi_tgt_out, ce_logitnorm_loss
+from comer.datamodules.crohme import Batch
+from comer.modules import CoMERFixMatchInterleavedTemperatureScaling
+from comer.utils.utils import to_bi_tgt_out, ce_logitnorm_loss
 
 
-class CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm(CoMERFixMatchInterleavedFixedPctTemperatureScaling):
+class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTemperatureScaling):
 
     def __init__(self,
                  logit_norm_temp: float,
-                 monitor: str,
                  **kwargs):
         super().__init__(**kwargs)
         self.save_hyperparameters()
@@ -55,27 +47,3 @@ class CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm(CoMERFixMatchI
 
         self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch_size)
         return loss + 0.0 * self.current_temperature
-
-    def configure_optimizers(self):
-        optimizer = optim.SGD(
-            self.parameters(),
-            lr=self.hparams.learning_rate,
-            momentum=0.9,
-            weight_decay=1e-4,
-        )
-
-        reduce_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode="max",
-            factor=0.25,
-            patience=self.hparams.patience // self.trainer.check_val_every_n_epoch,
-        )
-        scheduler = {
-            "scheduler": reduce_scheduler,
-            "monitor": self.hparams.monitor,
-            "interval": "epoch",
-            "frequency": self.trainer.check_val_every_n_epoch,
-            "strict": True,
-        }
-
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}

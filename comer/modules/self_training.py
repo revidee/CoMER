@@ -18,9 +18,11 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
     def __init__(
             self,
             pseudo_labeling_threshold: float,
+            monitor: str,
             **kwargs
     ):
         super().__init__(**kwargs)
+        self.save_hyperparameters()
         self.pseudo_labeling_threshold = np.log(pseudo_labeling_threshold)
 
     def training_step(self, batch: Batch, _):
@@ -47,7 +49,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
         )
         scheduler = {
             "scheduler": reduce_scheduler,
-            "monitor": "val_ExpRate/dataloader_idx_0",
+            "monitor": self.hparams.monitor,
             "interval": "epoch",
             "frequency": self.trainer.check_val_every_n_epoch,
             "strict": True,

@@ -1,25 +1,14 @@
 from zipfile import ZipFile
 
 from pytorch_lightning import seed_everything
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from torch.utils.data import DataLoader
 
 from comer.datamodules.crohme import CROHMEDataset, build_dataset
 from comer.datamodules.crohme.variants.collate import collate_fn
-from comer.datamodules.crohme.variants.fixmatch import CROHMEFixMatchDatamodule
-from comer.datamodules.crohme.variants.fixmatch_inter_oracle import CROHMEFixMatchOracleDatamodule
 from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
-from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
-from comer.datamodules import CROHMESelfTrainingDatamodule
-from comer.modules import CoMERSelfTraining
-from comer.modules.fixmatch import CoMERFixMatch
-from comer.modules.fixmatch_inter_oracle import CoMERFixMatchOracleInterleaved
-from comer.modules.fixmatch_interleaved import CoMERFixMatchInterleaved
-from comer.modules.fixmatch_sorted_fixed_pct import CoMERFixMatchInterleavedFixedPct
-from comer.modules.fixmatch_sorted_fixed_pct_temp_scale import CoMERFixMatchInterleavedFixedPctTemperatureScaling
-from comer.modules.fixmatch_sorted_fixed_pct_temp_scale_logit_norm import \
-    CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm
-from comer.modules.fixmatch_temp_scale import CoMERFixMatchInterleavedTemperatureScaling
+from comer.modules.fixmatch_inter_logitnorm_ts import CoMERFixMatchInterleavedLogitNormTempScale
 
 if __name__ == '__main__':
     seed_everything(7)
@@ -57,7 +46,7 @@ if __name__ == '__main__':
         unlabeled_weak_aug=""
     )
 
-    model: CoMERFixMatch = CoMERFixMatchInterleavedFixedPctTemperatureScalingLogitNorm.load_from_checkpoint(
+    model: CoMERFixMatchInterleavedLogitNormTempScale = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
         './lightning_logs/version_69/checkpoints/epoch=207-step=54704-val_ExpRate=0.5513.ckpt',
         strict=False,
         learning_rate=0.0008,
@@ -71,6 +60,7 @@ if __name__ == '__main__':
         th_optim_correct_weight=9,
         th_optim_sharpening=50
     )
+    model.set_verbose_temp_scale_optim(True)
 
     with ZipFile("data.zip") as f:
         trainer.validate(model, DataLoader(
