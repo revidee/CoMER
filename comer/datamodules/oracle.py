@@ -32,7 +32,7 @@ class Oracle:
     def levenshtein_str(self, fname: str, pred: Union[List[str], str]):
         return _general_levenshtein(self.label_dict[fname], pred)
 
-    def get_gt_indices(self, fname: str):
+    def get_gt_indices(self, fname: str) -> List[int]:
         return self.label_idx_dict[fname]
 
     def add_data(self, data: 'np.ndarray[Any, np.dtype[DataEntry]]'):

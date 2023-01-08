@@ -430,10 +430,10 @@ class DecodeModel(pl.LightningModule):
         )
         if save_logits:
             hyps_l2r, history_l2r, scores_l2r, repeats_l2r, raw_logits_l2r, \
-                hyps_r2l, history_r2l, scores_r2l, repeats_r2l, raw_logits_r2l = beamsearch.predict(self, src, src_mask)
+                hyps_r2l, hyps_r2l_ori, history_r2l, scores_r2l, repeats_r2l, raw_logits_r2l = beamsearch.predict(self, src, src_mask)
         else:
             hyps_l2r, history_l2r, scores_l2r, repeats_l2r, \
-                hyps_r2l, history_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
+                hyps_r2l, hyps_r2l_ori, history_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
 
         hyps_l2r_len = len(hyps_l2r)
         hyps_rl2_len = len(hyps_r2l)
@@ -505,6 +505,8 @@ class DecodeModel(pl.LightningModule):
         # Find the best hyp from the (optionally rescored) set of best l2r/r2l hyps.
         for src_idx, (len_l2r, len_r2l) in enumerate(zip(repeats_l2r, repeats_r2l)):
             # choose the best candidate for each input from the batch
+            len_l2r = len_l2r.item()
+            len_r2l = len_r2l.item()
             curr_best_idx = -1
             curr_best_idx_from_l2r = True
             curr_best_score = float('-Inf')
@@ -541,7 +543,7 @@ class DecodeModel(pl.LightningModule):
                             (max_len - hyps_r2l[hyp_cand_idx].size(0)):
                         ],
                         1,
-                        hyps_r2l[hyp_cand_idx].unsqueeze(-1),
+                        hyps_r2l_ori[hyp_cand_idx].unsqueeze(-1),
                     ).squeeze(-1)
                 )
                 r2l_rev_raw_logits.append(

@@ -155,7 +155,7 @@ class BeamManager:
             self.best_hyps[last_idx_better_than] = (score, sequence, history, raw_logits)
             self.worst_score = self.best_hyps[-1][0]
 
-    def get_best_l2r_finalized(self) -> Union[None, List[Tuple[Tensor, Tensor, Tensor, Union[Tensor, None]]]]:
+    def get_best_l2r_finalized(self) -> Union[None, List[Tuple[Tensor, Tensor, Tensor, Union[Tensor, None], Tensor]]]:
         """
             Returns the best hypothesis found and removes the SOS and EOS token
         """
@@ -168,7 +168,7 @@ class BeamManager:
             shifted_history[1:] = summed_history[:-1]
             single_logits = summed_history - shifted_history
             if self.is_direction_l2r:
-                output.append((score, seq[1:-1], single_logits, raw_logs))
+                output.append((score, seq[1:-1], single_logits, raw_logs, seq[1:-1]))
             else:
-                output.append((score, torch.flip(seq[1:-1], dims=[0]), torch.flip(single_logits, dims=[0]), raw_logs))
+                output.append((score, torch.flip(seq[1:-1], dims=[0]), torch.flip(single_logits, dims=[0]), raw_logs, seq[1:-1]))
         return output

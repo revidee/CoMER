@@ -357,11 +357,13 @@ class BatchedBeamSearch:
         scores_l2r: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
         raw_logits_l2r: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
         hyps_r2l: List[List[LongTensor]] = [[]]
+        hyps_r2l_ori: List[List[LongTensor]] = [[]]
         history_r2l: List[List[LongTensor]] = [[]]
         scores_r2l: List[List[Tensor]] = [[]]
         raw_logits_r2l: List[List[Tensor]] = [[]]
         if self.bi_dir:
             hyps_r2l = [[] for _ in itertools.repeat(None, batch_size)]
+            hyps_r2l_ori = [[] for _ in itertools.repeat(None, batch_size)]
             history_r2l = [[] for _ in itertools.repeat(None, batch_size)]
             scores_r2l = [[] for _ in itertools.repeat(None, batch_size)]
             raw_logits_r2l = [[] for _ in itertools.repeat(None, batch_size)]
@@ -372,7 +374,7 @@ class BatchedBeamSearch:
             best_hyps = bm.get_best_l2r_finalized()
             if bm.is_direction_l2r:
                 repeats_l2r[bm.src_idx] += len(best_hyps)
-                for (score, seq, history, raw_logits) in best_hyps:
+                for (score, seq, history, raw_logits, ori_seq) in best_hyps:
                     hyps_l2r[bm.src_idx].append(seq)
                     history_l2r[bm.src_idx].append(history)
                     scores_l2r[bm.src_idx].append(score.unsqueeze(0))
@@ -380,8 +382,9 @@ class BatchedBeamSearch:
                         raw_logits_l2r[bm.src_idx].append(raw_logits)
             else:
                 repeats_r2l[bm.src_idx] += len(best_hyps)
-                for (score, seq, history, raw_logits) in best_hyps:
+                for (score, seq, history, raw_logits, ori_seq) in best_hyps:
                     hyps_r2l[bm.src_idx].append(seq)
+                    hyps_r2l_ori[bm.src_idx].append(ori_seq)
                     history_r2l[bm.src_idx].append(history)
                     scores_r2l[bm.src_idx].append(score.unsqueeze(0))
                     if self.save_logits:
@@ -396,6 +399,7 @@ class BatchedBeamSearch:
                 repeats_l2r, \
                 list(itertools.chain.from_iterable(raw_logits_l2r)), \
                 list(itertools.chain.from_iterable(hyps_r2l)), \
+                list(itertools.chain.from_iterable(hyps_r2l_ori)), \
                 list(itertools.chain.from_iterable(history_r2l)), \
                 torch.cat(flattened_scores_r2l, dim=0) if len(flattened_scores_r2l) > 0 else self.empty_tensor, \
                 repeats_r2l, \
@@ -405,6 +409,7 @@ class BatchedBeamSearch:
             torch.cat(flattened_scores_l2r, dim=0) if len(flattened_scores_l2r) > 0 else self.empty_tensor, \
             repeats_l2r, \
             list(itertools.chain.from_iterable(hyps_r2l)), \
+            list(itertools.chain.from_iterable(hyps_r2l_ori)), \
             list(itertools.chain.from_iterable(history_r2l)), \
             torch.cat(flattened_scores_r2l, dim=0) if len(flattened_scores_r2l) > 0 else self.empty_tensor, \
             repeats_r2l
