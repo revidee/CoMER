@@ -140,11 +140,11 @@ class CoMERSupervised(pl.LightningModule):
         hp = dict(self.hparams)
         del hp["temperature"]
         if use_new:
-            return self.comer_model.new_beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True, save_logits=save_logits, debug=debug)
-        return self.comer_model.beam_search(img, mask, **self.hparams, scoring_run=True, bi_dir=True, debug=debug)
+            return self.comer_model.new_beam_search(img, mask, **hp, scoring_run=True, bi_dir=True, save_logits=save_logits, debug=debug, temperature=temperature)
+        return self.comer_model.beam_search(img, mask, **hp, scoring_run=True, bi_dir=True, debug=debug)
 
 
-def configure_optimizers(self):
+    def configure_optimizers(self):
         optimizer = optim.SGD(
             self.parameters(),
             lr=self.hparams.learning_rate,
@@ -152,18 +152,17 @@ def configure_optimizers(self):
             weight_decay=1e-4,
         )
 
-        reduce_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode="max",
-            factor=0.25,
-            patience=self.hparams.patience // self.trainer.check_val_every_n_epoch,
-        )
+        # reduce_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        #     optimizer,
+        #     mode="max",
+        #     factor=0.25,
+        #     patience=self.hparams.patience // self.trainer.check_val_every_n_epoch,
+        # )
+        step_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=self.hparams.patience, gamma=0.90)
         scheduler = {
-            "scheduler": reduce_scheduler,
-            "monitor": "val_ExpRate",
+            "scheduler": step_scheduler,
             "interval": "epoch",
-            "frequency": self.trainer.check_val_every_n_epoch,
-            "strict": True,
+            "frequency": 1
         }
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}

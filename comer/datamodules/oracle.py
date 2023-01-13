@@ -10,7 +10,7 @@ def _general_confidence(gt: Sequence[Hashable], pred: Sequence[Hashable]):
     return math.log(1.0 - wrong_pct_levenshtein) if wrong_pct_levenshtein < 1.0 else float("-Inf")
 
 
-def _general_levenshtein(gt: Sequence[Hashable], pred: Sequence[Hashable]):
+def general_levenshtein(gt: Sequence[Hashable], pred: Sequence[Hashable]):
     return distance(gt, pred, score_cutoff=(len(gt) - 1))
 
 
@@ -27,10 +27,10 @@ class Oracle:
         return _general_confidence(self.label_dict[fname], pred)
 
     def levenshtein_indices(self, fname: str, pred: List[int]):
-        return _general_levenshtein(self.label_idx_dict[fname], pred)
+        return general_levenshtein(self.label_idx_dict[fname], pred)
 
     def levenshtein_str(self, fname: str, pred: Union[List[str], str]):
-        return _general_levenshtein(self.label_dict[fname], pred)
+        return general_levenshtein(self.label_dict[fname], pred)
 
     def get_gt_indices(self, fname: str) -> List[int]:
         return self.label_idx_dict[fname]

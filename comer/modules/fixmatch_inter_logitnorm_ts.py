@@ -1,15 +1,19 @@
+from typing import List
+
 import torch
+from torch import FloatTensor, LongTensor
 
 from comer.datamodules.crohme import Batch
 from comer.modules import CoMERFixMatchInterleavedTemperatureScaling
-from comer.utils.utils import to_bi_tgt_out, ce_logitnorm_loss
-
+from comer.utils.utils import to_bi_tgt_out, ce_logitnorm_loss, Hypothesis
+from torch import linalg as LA
 
 class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTemperatureScaling):
 
     def __init__(self,
                  logit_norm_temp: float,
                  keep_old_preds: bool,
+                 monitor: str,
                  **kwargs):
         super().__init__(**kwargs)
         self.save_hyperparameters()
@@ -48,3 +52,22 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
 
         self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch_size)
         return loss
+
+    def approximate_joint_search(
+            self, img: FloatTensor, mask: LongTensor, use_new: bool = True,
+            save_logits: bool = False, debug=False, temperature=None
+    ) -> List[Hypothesis]:
+        if temperature is None:
+            temperature = self.current_temperature.item()
+        hp = dict(self.hparams)
+        del hp["temperature"]
+        del hp["logit_norm_temp"]
+        return self.comer_model.new_beam_search(
+            img, mask, **hp, scoring_run=True, bi_dir=True,
+            save_logits=save_logits, debug=debug, temperature=temperature
+        )
+
+    def process_out_hat(self, out_hat):
+        # self.logit_temp = self.logit_temp.to(self.device)
+        # return out_hat / (self.logit_temp * (LA.vector_norm(out_hat, dim=-1, keepdim=True) + 1e-7))
+        return out_hat

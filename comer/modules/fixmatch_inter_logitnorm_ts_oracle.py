@@ -1,9 +1,9 @@
 from comer.modules import CoMERFixMatchOracleInterleaved, \
-    CoMERFixMatchInterleavedTemperatureScaling
+    CoMERFixMatchInterleavedLogitNormTempScale
 
 
 class CoMERFixMatchOracleInterleavedLogitNormTempScale(
-    CoMERFixMatchInterleavedTemperatureScaling,
+    CoMERFixMatchInterleavedLogitNormTempScale,
     CoMERFixMatchOracleInterleaved
 ):
     pass

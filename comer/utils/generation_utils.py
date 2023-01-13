@@ -396,7 +396,8 @@ class DecodeModel(pl.LightningModule):
             bi_dir: bool = True,
             scoring_run: bool = True,
             debug: bool = False,
-            save_logits: bool = False
+            save_logits: bool = False,
+            logit_norm_temp: float = -1.,
     ) -> List[Hypothesis]:
         """run beam search to decode
         Parameters
@@ -426,14 +427,15 @@ class DecodeModel(pl.LightningModule):
             temperature=temperature,
             find_top_k=beam_size * 2,
             debug=debug,
-            save_logits=save_logits
+            save_logits=save_logits,
+            logit_norm_temp=logit_norm_temp
         )
         if save_logits:
             hyps_l2r, history_l2r, scores_l2r, repeats_l2r, raw_logits_l2r, \
-                hyps_r2l, hyps_r2l_ori, history_r2l, scores_r2l, repeats_r2l, raw_logits_r2l = beamsearch.predict(self, src, src_mask)
+                hyps_r2l, history_r2l, scores_r2l, repeats_r2l, raw_logits_r2l = beamsearch.predict(self, src, src_mask)
         else:
             hyps_l2r, history_l2r, scores_l2r, repeats_l2r, \
-                hyps_r2l, hyps_r2l_ori, history_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
+                hyps_r2l, history_r2l, scores_r2l, repeats_r2l = beamsearch.predict(self, src, src_mask)
 
         hyps_l2r_len = len(hyps_l2r)
         hyps_rl2_len = len(hyps_r2l)
@@ -478,11 +480,15 @@ class DecodeModel(pl.LightningModule):
                 ),
                 tgt, out, alpha, temperature
             )
-            out_hat = torch.flip(
-                F.log_softmax(
-                    raw_rev_logits / temperature,
-                    dim=-1
-                ), dims=[1])
+            out_hat = F.log_softmax(
+                raw_rev_logits / temperature,
+                dim=-1
+            )
+            if hyps_l2r_len > 0:
+                out_hat[:hyps_l2r_len] = torch.flip(
+                    out_hat[:hyps_l2r_len],
+                    dims=[1]
+                )
             if debug:
                 print("rev_scores:")
                 for i, single_tgt in enumerate(tgt):
@@ -512,16 +518,20 @@ class DecodeModel(pl.LightningModule):
             curr_best_score = float('-Inf')
             for i in range(len_l2r):
                 hyp_cand_idx = curr_offset_l2r + i
+                rev = torch.gather(
+                    out_hat[
+                    hyp_cand_idx,
+                    (max_len - hyps_l2r[hyp_cand_idx].size(0)):
+                    ],
+                    1,
+                    hyps_l2r[hyp_cand_idx].unsqueeze(-1),
+                ).squeeze(-1)
                 hyp_cand_score = scores_l2r[hyp_cand_idx]
+                # hyp_cand_score = torch.min(
+                #     torch.cat((history_l2r[hyp_cand_idx], rev))
+                # )
                 l2r_rev.append(
-                    torch.gather(
-                        out_hat[
-                            hyp_cand_idx,
-                            (max_len - hyps_l2r[hyp_cand_idx].size(0)):
-                        ],
-                        1,
-                        hyps_l2r[hyp_cand_idx].unsqueeze(-1),
-                    ).squeeze(-1)
+                    rev
                 )
                 l2r_rev_raw_logits.append(
                     raw_rev_logits[
@@ -535,16 +545,20 @@ class DecodeModel(pl.LightningModule):
                     curr_best_idx_from_l2r = True
             for i in range(len_r2l):
                 hyp_cand_idx = curr_offset_r2l + i
+                rev = torch.gather(
+                    out_hat[
+                    hyps_l2r_len + hyp_cand_idx,
+                    :(hyps_r2l[hyp_cand_idx].size(0))
+                    ],
+                    1,
+                    hyps_r2l[hyp_cand_idx].unsqueeze(-1),
+                ).squeeze(-1)
                 hyp_cand_score = scores_r2l[hyp_cand_idx]
+                # hyp_cand_score = torch.min(
+                #     torch.cat((history_r2l[hyp_cand_idx], rev))
+                # )
                 r2l_rev.append(
-                    torch.gather(
-                        out_hat[
-                            hyps_l2r_len + hyp_cand_idx,
-                            (max_len - hyps_r2l[hyp_cand_idx].size(0)):
-                        ],
-                        1,
-                        hyps_r2l_ori[hyp_cand_idx].unsqueeze(-1),
-                    ).squeeze(-1)
+                    rev
                 )
                 r2l_rev_raw_logits.append(
                     raw_rev_logits[

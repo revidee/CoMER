@@ -1,99 +1,33 @@
 import itertools
 import math
-import multiprocessing
 import os
-from collections import defaultdict
-from typing import List, Dict, Tuple
+from typing import Dict, Tuple, List, Callable, Union
 from zipfile import ZipFile
 
 import numpy as np
 import torch
-import torchvision.transforms as tr
-from PIL.Image import Image
 from jsonargparse import CLI
 from pytorch_lightning import seed_everything
-from torch import FloatTensor
-from torchvision.transforms import ToPILImage
 
 from comer.datamodules import Oracle
 from comer.datamodules.crohme import extract_data_entries, vocab
-from comer.datamodules.crohme.batch import build_batches_from_samples, BatchTuple, Batch, get_splitted_indices
-from comer.datamodules.crohme.dataset import W_LO, H_LO, H_HI, W_HI
+from comer.datamodules.crohme.batch import build_batches_from_samples, Batch, get_splitted_indices, BatchTuple
 from comer.datamodules.crohme.variants.collate import collate_fn
-from comer.datamodules.utils.randaug import RandAugment
-from comer.datamodules.utils.transforms import ScaleToLimitRange
-from comer.modules import CoMERFixMatchInterleavedFixedPctLogitNormTempScale, CoMERSupervised, \
-    CoMERFixMatchInterleavedLogitNormTempScale
+from comer.datamodules.oracle import general_levenshtein
+from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale
 from comer.utils import ECELoss
-from comer.utils.utils import Hypothesis, to_bi_tgt_out
-import torch.nn.functional as F
-
-from Levenshtein import median, median_improve
-
-import numpy as np
-from sklearn.pipeline import make_pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
+from comer.utils.conf_measures import th_fn_bimin, score_ori, score_bimin, score_avg, score_rev_avg, score_bisum, \
+    score_bisum_avg, score_bi_avg, score_sum
+from comer.utils.utils import Hypothesis
 
 # checkpoint_path = "./bench/epoch3.ckpt"
 checkpoint_path = './lightning_logs/version_48/checkpoints/ep=251-st=51982-valLoss=0.3578.ckpt'
 
 
-def score_avg(hyp: Hypothesis):
-    return hyp.score / 2
-
-
-def th_fn_avg(hyp, th, exp):
-    seq_len = len(hyp.seq)
-    return (score_avg(hyp) * (exp ** (1 + 5 * math.log(seq_len))) >= th) if seq_len else False
-
-
-def score_min(hyp: Hypothesis):
-    return min(hyp.history)
-
-
-def th_fn_min(hyp: Hypothesis, th, exp):
-    seq_len = len(hyp.seq)
-    return (score_min(hyp) >= th) if seq_len else False
-
-
-def score_bimin(hyp: Hypothesis):
-    return min((min(hyp.history), min(hyp.best_rev)))
-
-
-def th_fn_bimin(hyp: Hypothesis, th, exp):
-    seq_len = len(hyp.seq)
-    return ((score_bimin(hyp) * (exp ** (1 + 5 * math.log(seq_len)))) >= th) if seq_len else False
-
-
-def score_sum(hyp: Hypothesis):
-    return sum(hyp.history)
-
-
-def th_fn_sum(hyp, th, exp):
-    seq_len = len(hyp.seq)
-    return (score_sum(hyp) >= th) if seq_len else False
-
-def score_bisum(hyp: Hypothesis):
-    return sum(hyp.history) + sum(hyp.best_rev)
-
-def th_fn_bisum(hyp, th, exp):
-    seq_len = len(hyp.seq)
-    return (score_bisum(hyp) >= th) if seq_len else False
-
-def score_bisum_avg(hyp: Hypothesis):
-    return (sum(hyp.history) + sum(hyp.best_rev)) / 2
-
-
-def th_fn_bisum_avg(hyp, th, exp):
-    seq_len = len(hyp.seq)
-    return (((sum(hyp.history) + sum(hyp.best_rev)) / 2) >= th) if seq_len else False
-
-
 use_fn = th_fn_bimin
 
 
-def calc_min(th_pseudo_perc: float, all_hyps: Dict[str, Hypothesis], oracle: Oracle, exp: float = 1.0):
+def calc_min(th_pseudo_perc: float, all_hyps: Dict[str, Hypothesis], oracle: Oracle):
     th_min = math.log(th_pseudo_perc)
     min_conf_passed = 0
     min_conf_passed_correct = 0
@@ -105,7 +39,7 @@ def calc_min(th_pseudo_perc: float, all_hyps: Dict[str, Hypothesis], oracle: Ora
         if lev_dist == 0:
             correct_hyps += 1
 
-        if use_fn(hyp, th_min, exp):
+        if use_fn(hyp, th_min):
             min_conf_passed += 1
             if lev_dist == 0:
                 min_conf_passed_correct += 1
@@ -128,8 +62,10 @@ def calc_min(th_pseudo_perc: float, all_hyps: Dict[str, Hypothesis], oracle: Ora
 def single_step(input_tuple: Tuple[float, Dict[str, Hypothesis], Oracle]):
     return calc_min(input_tuple[0], input_tuple[1], input_tuple[2], 1.0), input_tuple[0]
 
+def to_rounded_exp(logits: List[float]):
+    return [f"{math.exp(logit) * 100:.2f}" for logit in logits]
 
-def main(gpu: int = 0):
+def main(gpu: int = -1):
     print("init")
     print(f"- gpu: cuda:{gpu}")
     print(f"- cp: {checkpoint_path}")
@@ -139,146 +75,88 @@ def main(gpu: int = 0):
         device = torch.device(f"cuda:{gpu}")
 
     with torch.no_grad():
-        # model: CoMERSupervised = CoMERSupervised.load_from_checkpoint(checkpoint_path, temperature=100)
+        # model: CoMERFixMatchInterleavedLogitNormTempScale\
+        #     = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint("./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt", temperature=100)
         # model = model.eval().to(device)
         # model.share_memory()
-
-        print("model loaded")
+        #
+        # print("model loaded")
 
         with ZipFile("data.zip") as archive:
             seed_everything(7)
             full_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train",
                                                                                            to_device=device)
-            full_data_test: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "2019",
-                                                                                           to_device=device)
-            oracle = Oracle(full_data)
-            oracle.add_data(full_data_test)
-
             labeled_indices, unlabeled_indices = get_splitted_indices(
                 full_data,
                 unlabeled_pct=0.65,
                 sorting_mode=1
             )
-            labeled_data, unlabeled_data = full_data[labeled_indices], full_data[
-                unlabeled_indices]
+            full_data_test: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "2019",
+                                                                                           to_device=device)
+            oracle = Oracle(full_data)
+            oracle.add_data(full_data_test)
 
-            pseudo_labeling_batches = build_batches_from_samples(
-                unlabeled_data,
-                4
-            )
-            test_batches = build_batches_from_samples(
-                full_data_test,
-                4
-            )
+            eval_sorting_score(oracle, True)
 
+            # hyps: Dict[str, Hypothesis] = torch.load("../hyps_s_35_new_original_ts_ece.pt",
+            #                                              map_location=torch.device('cpu'))
+            #
+            #
+            # # Rates a list of thresholds with correct/incorrect and total/avg levensthein metrics
+            #
+            # splitted_fnames = []
+            # splitted_hyps: List[Hypothesis] = []
+            # splitted_scores = []
+            #
+            # for (fname, hyp) in hyps.items():
+            #     splitted_fnames.append(fname)
+            #     splitted_hyps.append(hyp)
+            #     splitted_scores.append(score_bimin(hyp))
+            #
+            # splitted_scores = np.array(splitted_scores)
+            # splitted_scores_sorted = np.argsort(splitted_scores)[::-1]
+            #
+            # total_to_print = 10
+            # skips = 0
+            # for best_i, idx in enumerate(splitted_scores_sorted):
+            #     score = splitted_scores[idx]
+            #     hyp: Hypothesis = splitted_hyps[idx]
+            #     fname: str = splitted_fnames[idx]
+            #     lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
+            #     if lev_dist != 0:
+            #         if skips:
+            #             skips -= 1
+            #             continue
+            #         print("###############")
+            #         print(best_i)
+            #         print("gt")
+            #         print(vocab.indices2words(oracle.get_gt_indices(fname)))
+            #         print("pred")
+            #         print(vocab.indices2words(hyp.seq))
+            #         print(to_rounded_exp(hyp.history))
+            #         print(to_rounded_exp(hyp.best_rev))
+            #         print("avgs")
+            #         avgs = [(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))]
+            #         print(to_rounded_exp(avgs))
+            #
+            #         print(lev_dist)
+            #         print(fname, math.exp(score), hyp.was_l2r, len(hyp.all_l2r_scores), len(hyp.all_r2l_scores))
+            #         # print(hyp.all_l2r_hyps)
+            #         # print(hyp.all_r2l_hyps)
+            #         total_to_print -= 1
+            #         if total_to_print == 0:
+            #             break
+            #         # for i, rev_hyp in enumerate(hyp.all_l2r_hyps):
+            #         #     print("### l2r")
+            #         #     print(math.exp(hyp.all_l2r_scores[i]))
+            #         #     print(vocab.indices2words(rev_hyp.tolist()))
+            #         #     print(to_rounded_exp(hyp.all_l2r_history[i].tolist()))
+            #         # for i, rev_hyp in enumerate(hyp.all_r2l_hyps):
+            #         #     print("### r2l")
+            #         #     print(math.exp(hyp.all_r2l_scores[i]))
+            #         #     print(vocab.indices2words(rev_hyp.tolist()))
+            #         #     print(to_rounded_exp(hyp.all_r2l_history[i].tolist()))
 
-            cps = [
-                # ("./lightning_logs/version_64/checkpoints/optimized_ts_0.5146.ckpt", "t0_02_opt"),
-                # ("./lightning_logs/version_70/checkpoints/optimized_ts_0.5405.ckpt", "t0_04_opt"),
-                # ("./lightning_logs/version_65/checkpoints/optimized_ts_0.5505.ckpt", "t0_05_opt"),
-                ("./lightning_logs/version_71/checkpoints/epoch=197-step=52074-val_ExpRate=0.5321.ckpt", "t0_0625"),
-                # ("./lightning_logs/version_71/checkpoints/optimized_ts_0.5338.ckpt", "t0_0625_opt"),
-                # ("./lightning_logs/version_69/checkpoints/optimized_ts_0.556297.ckpt", "t0_075_opt"),
-                # ("./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt", "t0_1_opt"),
-                # ("./lightning_logs/version_67/checkpoints/optimized_ts_0.5038.ckpt", "t0_2_opt"),
-                # ("./lightning_logs/version_68/checkpoints/optimized_ts_0.4829.ckpt", "t0_5_opt"),
-                # ("./lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt", "original"),
-            ]
-            to_test_temps = [1, 3]
-            to_test_data_sets = [
-                ("_test", test_batches),
-                ("", pseudo_labeling_batches),
-            ]
-            ece = ECELoss()
-
-            def hyp_to_triplet_ori(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp(score_avg(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-            def hyp_to_triplet_avg(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp(score_sum(hyp) / hyp_len) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            def hyp_to_triplet_bimin(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp(score_bimin(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            scoring_fns = [
-                ("original", hyp_to_triplet_ori),
-                ("sum", hyp_to_triplet_avg),
-                ("bimin", hyp_to_triplet_bimin),
-            ]
-            scoring_fn_names = [name for (name, _) in scoring_fns]
-
-            total_batches = len(pseudo_labeling_batches) + len(test_batches)
-            total_pseudo_batches = len(pseudo_labeling_batches)
-            ten_pct_steps = np.floor(np.linspace(0, total_batches, 10, endpoint=False))
-
-
-
-            with torch.inference_mode():
-                for (cp, name) in cps:
-                    model = None
-                    torch.cuda.empty_cache()
-                    all_hyps = {}
-
-                    print(f"Loading {cp}...")
-                    model: CoMERFixMatchInterleavedLogitNormTempScale \
-                        = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
-                        cp
-                    )
-                    model = model.eval().to(device)
-                    model.share_memory()
-                    print("model loaded")
-
-
-                    for (save_ds_suffix, set) in to_test_data_sets:
-                        for temp in to_test_temps:
-                            save_path = f"./hyps_s_35_{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
-                            exists = os.path.exists(save_path)
-                            if not exists:
-                                ten_pct_steps = np.floor(np.linspace(0, len(set), 10, endpoint=False))
-                                print(f"LN {name}{save_ds_suffix}, progress: ", end="", flush=True)
-                                progress = 0
-                                all_hyps[save_path] = {}
-                                all_hyps_save_path = all_hyps[save_path]
-                                for i, batch_raw in enumerate(set):
-                                    if i in ten_pct_steps:
-                                        print(progress, end="", flush=True)
-                                        progress += 1
-                                    batch = collate_fn([batch_raw]).to(device=device)
-                                    hyps = model.approximate_joint_search(
-                                        batch.imgs, batch.mask, use_new=True, debug=False, save_logits=False, temperature=temp
-                                    )
-                                    for i, hyp in enumerate(hyps):
-                                        all_hyps_save_path[batch.img_bases[i]] = hyp
-                                torch.save(all_hyps_save_path, save_path)
-                                print(" saved")
-                            else:
-                                all_hyps[save_path] = torch.load(save_path, map_location=device)
-                                print(f"LN {name} loaded from save")
-                    # do the actual eval
-                    for (save_ds_suffix, _) in to_test_data_sets:
-                        pct_slots = list(itertools.repeat("", len(to_test_temps) + len(scoring_fns) * len(to_test_temps)))
-
-                        for temp_idx, temp in enumerate(to_test_temps):
-                            save_path = f"./hyps_s_35_{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
-                            for i, (_, tf) in enumerate(scoring_fns):
-                                ece_score, acc = ece.ece_for_predictions(map(tf, all_hyps[save_path].items()))
-                                pct_slots[temp_idx] = f"{acc * 100:.2f}"
-                                pct_slots[len(to_test_temps) + i + temp_idx * len(scoring_fns)] = f"{ece_score * 100:.2f}"
-                        curr_temp = 1.0
-                        if hasattr(model, "current_temperature"):
-                            curr_temp = model.current_temperature.item()
-                        print(f"{name}{save_ds_suffix}", f"ts: {curr_temp}, temps: {to_test_temps}, confs: {scoring_fn_names}")
-                        print("\t".join(pct_slots[:len(to_test_temps)]), end="")
-                        print("\t\t", end="")
-                        for i in range(len(to_test_temps)):
-                            print("\t".join(pct_slots[len(to_test_temps)+i*len(scoring_fns):len(to_test_temps)+(i+1)*len(scoring_fns)]), end="")
-                            print("\t\t", end="")
-                        print()
 
 
 
@@ -870,6 +748,161 @@ def zero_safe_exp(e):
 def full(batch: Batch, model, shapes, use_new: bool = False):
     return model.approximate_joint_search(batch.imgs, batch.mask, use_new=use_new)
     # print(hyps[0].score, len(hyps[0].seq), vocab.indices2words(hyps[0].seq))
+
+def gauss_sum(n):
+    return n * (n + 1) / 2
+
+def partial_label(hyp: Hypothesis) -> Tuple[bool, List[int], Union[List[int], None]]:
+    avgs = np.array([(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))])
+    idx = np.argmin(avgs)
+
+    masked_avgs = np.ma.array(avgs, mask=False)
+    masked_avgs.mask[idx] = True
+
+    m = masked_avgs.mean()
+    c = masked_avgs - m
+    std = np.dot(c, c) / masked_avgs.size
+
+    min_dev = m - avgs[idx]
+
+    if min_dev > std:
+        # mask it and use l2r / r2l from there
+        return True, hyp.seq[:idx], hyp.seq[idx+1:]
+    return False, hyp.seq, None
+
+def eval_sorting_score(oracle: Oracle, partial: bool = False):
+    # Loads multiple hyp collections from different checkpoints and evaluates multiple conf-measures based
+    # on the sorting of the confidence scores
+    hyp_files = [
+        "../hyps_s_35_new_original_1.pt",
+        "../hyps_s_35_new_original_ts_both.pt",
+        "../hyps_s_35_new_original_ts_ce.pt",
+        "../hyps_s_35_new_original_ts_ece.pt",
+        "../hyps_s_35_new_t0_02_opt.pt",
+        "../hyps_s_35_new_t0_04_opt.pt",
+        "../hyps_s_35_new_t0_05_opt.pt",
+        "../hyps_s_35_new_t0_075_opt.pt",
+        "../hyps_s_35_new_t0_1_opt.pt",
+        "../hyps_s_35_new_t0_5_opt.pt",
+
+    ]
+    all_hyps: Dict[str, Dict[str, Hypothesis]] = {}
+    for hyp_file in hyp_files:
+        all_hyps[hyp_file] = torch.load(hyp_file, map_location=torch.device('cpu'))
+    for name, sfn in [("ORI", score_ori), ("AVG", score_avg), ("REV_AVG", score_rev_avg),
+                      ("BI_AVG", score_bi_avg), ("BIMIN", score_bimin), ("MULT", score_sum), ("BIMULT", score_bisum)]:
+        print(f"{name}".ljust(14), end="")
+        for hyps in all_hyps.values():
+            print(f"{sorting_score(hyps, sfn, oracle, partial):.2f}".ljust(16), end="")
+        print()
+
+def sorting_score(hyps, scoring_fn, oracle, partial: bool = False):
+    splitted_fnames = []
+    splitted_hyps: List[Tuple[bool, List[int], Union[List[int], None]]] = []
+    splitted_scores = []
+
+    for (fname, hyp) in hyps.items():
+        splitted_fnames.append(fname)
+        if partial:
+            splitted_hyps.append(partial_label(hyp))
+        else:
+            splitted_hyps.append((False, hyp.seq, None))
+        splitted_scores.append(scoring_fn(hyp))
+
+    splitted_scores = np.array(splitted_scores)
+    splitted_scores_sorted = np.argsort(splitted_scores)[::-1]
+
+
+    partial_bidir = 2 if partial else 1
+    total_hyps = len(splitted_scores_sorted)
+
+    wrong_idx_sum = 0
+    wrong_hyps = 0
+
+    skipped_partials = 0
+    total_partials = 0
+
+
+    for best_i, idx in enumerate(splitted_scores_sorted):
+        hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
+        fname: str = splitted_fnames[idx]
+        if partial and hyp[0]:
+            total_partials += 1
+            l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
+            label = oracle.get_gt_indices(fname)
+
+            if l2r_len:
+                if general_levenshtein(label[:l2r_len], hyp[1]) != 0:
+                    wrong_idx_sum += best_i
+                    wrong_hyps += 1
+            else:
+                skipped_partials += 1
+
+            if r2l_len:
+                if general_levenshtein(label[(len(label) - r2l_len):], hyp[2]) != 0:
+                    wrong_idx_sum += best_i
+                    wrong_hyps += 1
+            else:
+                skipped_partials += 1
+        elif oracle.levenshtein_indices(fname, hyp[1]) != 0:
+            wrong_idx_sum += best_i * partial_bidir
+            wrong_hyps += 2
+
+    total_hyps = (total_hyps * partial_bidir) - skipped_partials
+
+    correct_hyps = total_hyps - wrong_hyps
+
+    bc_score = gauss_sum(total_hyps / partial_bidir) * partial_bidir - gauss_sum(correct_hyps / partial_bidir) * partial_bidir
+
+    wc_score = gauss_sum(wrong_hyps / partial_bidir) * partial_bidir
+    print(total_partials, skipped_partials)
+    return zero_safe_division(bc_score - wrong_idx_sum, bc_score - wc_score) * 100
+
+def rate_threshold(hyps: Dict[str, Hypothesis],
+                   oracle: Oracle,
+                   threshold: float,
+                   scoring_fn: Callable[[Hypothesis], float]
+                   ):
+    # evaluates a single conf-measures on a batch of hypothesis, based on a given threshold,
+    # the error rate on passed hyps, average levenshtein error
+    passed = 0
+    incorrect = 0
+    incorrect_lev_dist_sum = 0
+    incorrect_with_wrong_len = 0
+    for fname, hyp in hyps.items():
+        conf = scoring_fn(hyp)
+        if conf >= threshold:
+            passed += 1
+
+            lev_dist = oracle.levenshtein_indices(fname, hyp.seq)
+            is_correct = lev_dist == 0
+            correct_len = len(hyp.seq) == len(oracle.get_gt_indices(fname))
+
+            if not is_correct:
+                incorrect += 1
+                incorrect_lev_dist_sum += lev_dist
+                if not correct_len:
+                    incorrect_with_wrong_len += 1
+    return passed, incorrect, incorrect_with_wrong_len, incorrect_lev_dist_sum
+
+
+def eval_confs_by_thresholds(hyps: Dict[str, Hypothesis],
+                             oracle: Oracle,):
+    # evaluates a multiple conf-measures on a batch of hypothesis, based on multiple thresholds,
+    # the error rate on passed hyps, average levenshtein error
+    # Print the metrics according to this header:
+    # Passed	Err (%)		Err-Len (%)		    Levenshtein
+    #                                       Sum	   Ø-Pass Ø-Err
+    for thresh in [0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9, 0.925, 0.95, 0.96, 0.975]:
+        print(f"{thresh}".ljust(5), end="")
+        for sfn in [score_ori, score_avg, score_bimin]:
+            passed, incorrect, incorrect_with_wrong_len, incorrect_lev_dist_sum = rate_threshold(hyps, oracle, math.log(thresh), sfn)
+            print(f" {passed}".ljust(6) +
+                                f" {incorrect} ({incorrect * 100 / passed:.1f})".ljust(13) +
+                                f" {incorrect_with_wrong_len} ({zero_safe_division(incorrect_with_wrong_len * 100, incorrect):.1f}) ".ljust(13) +
+                                f" {incorrect_lev_dist_sum} {incorrect_lev_dist_sum / passed:.2f} ".ljust(11) +
+                                f" {zero_safe_division(incorrect_lev_dist_sum, incorrect):.2f}  ".ljust(8), end='')
+    print()
 
 
 if __name__ == '__main__':

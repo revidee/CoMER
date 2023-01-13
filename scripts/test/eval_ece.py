@@ -6,13 +6,16 @@ from zipfile import ZipFile
 
 import numpy as np
 import torch
+from jsonargparse import CLI
+from pytorch_lightning import seed_everything
 
 from comer.datamodules import Oracle
 from comer.datamodules.crohme import extract_data_entries, get_splitted_indices, build_batches_from_samples, BatchTuple
 from comer.datamodules.crohme.variants.collate import collate_fn
-from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale
+from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale, CoMERSupervised, \
+    CoMERFixMatchInterleavedTemperatureScaling
 from comer.utils import ECELoss
-from comer.utils.conf_measures import score_avg, score_sum, score_bimin
+from comer.utils.conf_measures import score_ori, score_sum, score_bimin, score_rev_sum, score_bisum
 from comer.utils.utils import Hypothesis
 
 def gpu_str(gpu: int):
@@ -21,51 +24,94 @@ def main(gpu: int = 0):
     print(f"- gpu: {gpu_str(gpu)}")
     device = torch.device(gpu_str(gpu))
     with ZipFile("data.zip") as archive:
+        seed_everything(7)
         # TODO: Modify to your needs
+        # gpu_cps = {
+        #     2: [
+        #         ("./lightning_logs/version_64/checkpoints/optimized_ts_0.5146.ckpt", "t0_02_opt"),
+        #         ("./lightning_logs/version_70/checkpoints/optimized_ts_0.5405.ckpt", "t0_04_opt"),
+        #     ],
+        #     3: [
+        #         ("./lightning_logs/version_65/checkpoints/optimized_ts_0.5505.ckpt", "t0_05_opt"),
+        #         ("./lightning_logs/version_71/checkpoints/optimized_ts_0.5338.ckpt", "t0_0625_opt"),
+        #     ],
+        #     4: [
+        #         ("./lightning_logs/version_69/checkpoints/optimized_ts_0.556297.ckpt", "t0_075_opt"),
+        #         ("./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt", "t0_1_opt"),
+        #     ],
+        #     5: [
+        #         ("./lightning_logs/version_67/checkpoints/optimized_ts_0.5038.ckpt", "t0_2_opt"),
+        #         ("./lightning_logs/version_68/checkpoints/optimized_ts_0.4829.ckpt", "t0_5_opt"),
+        #     ],
+        # }
+        # cps = gpu_cps[gpu]
         cps = [
             # ("./lightning_logs/version_64/checkpoints/optimized_ts_0.5146.ckpt", "t0_02_opt"),
             # ("./lightning_logs/version_70/checkpoints/optimized_ts_0.5405.ckpt", "t0_04_opt"),
             # ("./lightning_logs/version_65/checkpoints/optimized_ts_0.5505.ckpt", "t0_05_opt"),
-            ("./lightning_logs/version_71/checkpoints/epoch=197-step=52074-val_ExpRate=0.5321.ckpt", "t0_0625"),
             # ("./lightning_logs/version_71/checkpoints/optimized_ts_0.5338.ckpt", "t0_0625_opt"),
             # ("./lightning_logs/version_69/checkpoints/optimized_ts_0.556297.ckpt", "t0_075_opt"),
             # ("./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt", "t0_1_opt"),
             # ("./lightning_logs/version_67/checkpoints/optimized_ts_0.5038.ckpt", "t0_2_opt"),
             # ("./lightning_logs/version_68/checkpoints/optimized_ts_0.4829.ckpt", "t0_5_opt"),
-            # ("./lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt", "original"),
+            # ("./lightning_logs/version_71/checkpoints/epoch=197-step=52074-val_ExpRate=0.5321.ckpt", "t0_0625"),
+            # ("./lightning_logs/version_25/checkpoints/optimized_ts_0.5571_both.ckpt", "original_ts_both"),
+            # ("./lightning_logs/version_25/checkpoints/optimized_ts_0.5571_ce_only.ckpt", "original_ts_ce"),
+            # ("./lightning_logs/version_25/checkpoints/optimized_ts_0.5555_ece_only.ckpt", "original_ts_ece"),
+            ("./lightning_logs/version_74/ep=1-st=388-valLoss=0.5354.ckpt", "test_bimin"),
         ]
         oracle, test_batches, pseudo_labeling_batches = get_testable_sets(archive, device)
 
         # None = use the learned & saved temperature of the model, float = use the given temperature instead
-        to_test_temps = [1, 3]
+        to_test_temps = [None]
 
         # 0: suffix used to save the hyp predictions
         # 1: data set which to make predictions for
         to_test_data_sets: List[Tuple[str, List[BatchTuple]]] = [
-            ("_test", test_batches),
+            # ("_test", test_batches),
             ("", pseudo_labeling_batches),
         ]
+
+        suite_name = "s_35_new"
 
         ece = ECELoss()
 
         def hyp_to_triplet_ori(fname_and_hyp: Tuple[str, Hypothesis]):
             fname, hyp = fname_and_hyp
             hyp_len = len(hyp.seq)
-            return (math.exp(score_avg(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
+            return (math.exp(score_ori(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
+
         def hyp_to_triplet_avg(fname_and_hyp: Tuple[str, Hypothesis]):
             fname, hyp = fname_and_hyp
             hyp_len = len(hyp.seq)
             return (math.exp(score_sum(hyp) / hyp_len) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
+        def hyp_to_triplet_rev_avg(fname_and_hyp: Tuple[str, Hypothesis]):
+            fname, hyp = fname_and_hyp
+            hyp_len = len(hyp.seq)
+            return (math.exp(score_rev_sum(hyp) / hyp_len) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
 
         def hyp_to_triplet_bimin(fname_and_hyp: Tuple[str, Hypothesis]):
             fname, hyp = fname_and_hyp
             hyp_len = len(hyp.seq)
             return (math.exp(score_bimin(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
 
+        def hyp_to_triplet_mult(fname_and_hyp: Tuple[str, Hypothesis]):
+            fname, hyp = fname_and_hyp
+            hyp_len = len(hyp.seq)
+            return (math.exp(score_sum(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
+
+        def hyp_to_triplet_bimult(fname_and_hyp: Tuple[str, Hypothesis]):
+            fname, hyp = fname_and_hyp
+            hyp_len = len(hyp.seq)
+            return (math.exp(score_bisum(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
+
         scoring_fns = [
             ("original", hyp_to_triplet_ori),
             ("sum", hyp_to_triplet_avg),
+            ("revsum", hyp_to_triplet_rev_avg),
             ("bimin", hyp_to_triplet_bimin),
+            ("mult", hyp_to_triplet_mult),
+            ("bimult", hyp_to_triplet_bimult),
         ]
 
 
@@ -77,8 +123,8 @@ def main(gpu: int = 0):
                 all_hyps = {}
 
                 print(f"Loading {cp}...")
-                model: CoMERFixMatchInterleavedLogitNormTempScale \
-                    = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
+                model: CoMERFixMatchInterleavedTemperatureScaling \
+                    = CoMERFixMatchInterleavedTemperatureScaling.load_from_checkpoint(
                     cp
                 )
                 model = model.eval().to(device)
@@ -88,7 +134,7 @@ def main(gpu: int = 0):
 
                 for (save_ds_suffix, set) in to_test_data_sets:
                     for temp in to_test_temps:
-                        save_path = f"./hyps_s_35_{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
+                        save_path = f"./hyps_{suite_name}_{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
                         exists = os.path.exists(save_path)
                         if not exists:
                             ten_pct_steps = np.floor(np.linspace(0, len(set), 10, endpoint=False))
@@ -116,7 +162,7 @@ def main(gpu: int = 0):
                     pct_slots = list(itertools.repeat("", len(to_test_temps) + len(scoring_fns) * len(to_test_temps)))
 
                     for temp_idx, temp in enumerate(to_test_temps):
-                        save_path = f"./hyps_s_35_{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
+                        save_path = f"./hyps_{suite_name}_{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
                         for i, (_, tf) in enumerate(scoring_fns):
                             ece_score, acc = ece.ece_for_predictions(map(tf, all_hyps[save_path].items()))
                             pct_slots[temp_idx] = f"{acc * 100:.2f}"
@@ -157,3 +203,7 @@ def get_testable_sets(archive: ZipFile, device : torch.device):
         4
     )
     return oracle, test_batches, pseudo_labeling_batches
+
+
+if __name__ == '__main__':
+    CLI(main)

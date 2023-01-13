@@ -18,7 +18,14 @@ class DataEntry:
 def extract_data_entries(archive: ZipFile, dir_name: str,
                          to_device: Optional[torch.device] = None,
                          max_size: Optional[int] = None,
-                         random_seed: Optional[int] = None) -> 'np.ndarray[Any, np.dtype[DataEntry]]':
+                         random_seed: Optional[int] = None,
+                         # file_ending: str = "png",
+                         # folder_prefix: str = "",
+                         # folder_infix: str = "",
+                         folder_infix: str = "/img",
+                         file_ending: str = "bmp",
+                         folder_prefix: str = "data/"
+                         ) -> 'np.ndarray[Any, np.dtype[DataEntry]]':
     """Extract all data need for a dataset from zip archive
 
     Args:
@@ -28,7 +35,7 @@ def extract_data_entries(archive: ZipFile, dir_name: str,
     Returns:
         Data: list of tuple of image and formula
     """
-    with archive.open(f"data/{dir_name}/caption.txt", "r") as f:
+    with archive.open(f"{folder_prefix}{dir_name}/caption.txt", "r") as f:
         captions = f.readlines()
     if max_size is not None:
         captions = captions[0:max_size]
@@ -37,7 +44,7 @@ def extract_data_entries(archive: ZipFile, dir_name: str,
         tmp: List[str] = line.decode().strip().split()
         file_name: str = tmp[0]
         label: List[str] = tmp[1:]
-        with archive.open(f"data/{dir_name}/img/{file_name}.bmp", "r") as f:
+        with archive.open(f"{folder_prefix}{dir_name}{folder_infix}/{file_name}.{file_ending}", "r") as f:
             # move image to memory immediately, avoid lazy loading, which will lead to None pointer error in loading
             img: Image.Image = Image.open(f).copy()
 

@@ -5,12 +5,14 @@ import torch.distributed as dist
 import torch.nn.functional as F
 from einops import rearrange
 from torch import LongTensor, FloatTensor, Tensor, optim
+from torch.utils.tensorboard import SummaryWriter
 
 from comer.datamodules.crohme import Batch, vocab
 from comer.modules import CoMERFixMatchInterleaved
 from comer.utils import ECELoss
 from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out, Hypothesis)
+
 
 
 class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
@@ -24,7 +26,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         super().__init__(**kwargs)
         self.save_hyperparameters()
         self.register_buffer("current_temperature", torch.ones(1) * 1.5, True)
-        self.verbose_temp_scale = False
+        self.verbose_temp_scale = True
 
     def training_step(self, batch: Batch, _):
         # Hack to get a zero-grad (no change) to the current temperature param, which is otherwise not used in training
@@ -81,6 +83,9 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
             save_logits=save_logits, debug=debug, temperature=temperature
         )
 
+    def process_out_hat(self, out_hat):
+        return out_hat
+
     def validation_dataloader_end(self, outputs: List[
         Tuple[Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]]
     ]):
@@ -109,9 +114,10 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                 for single_gpu_step_output in single_gpu_outputs:
                     out, out_hat, scores, seqs, labels = single_gpu_step_output[1]
                     flat = rearrange(out, "b l -> (b l)")
+                    out_hat = self.process_out_hat(out_hat.to(self.device))
                     flat_hat = rearrange(out_hat, "b l e -> (b l) e")
                     all_labels_append(flat.to(self.device))
-                    all_logits_append(flat_hat.to(self.device))
+                    all_logits_append(flat_hat)
                     for i, label in enumerate(labels):
                         if label == seqs[i]:
                             correct_scores_append(scores[i])
@@ -120,15 +126,9 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
             labels = torch.cat(all_labels)
             logits = torch.cat(all_logits)
 
-            correct_scores: Tensor = torch.tensor(correct_scores, device=self.device, requires_grad=True)
-            total_correct: Tensor = torch.ones(1, device=self.device, dtype=torch.float,
-                                               requires_grad=True) * correct_scores.size(0)
-            incorrect_scores: Tensor = torch.tensor(incorrect_scores, device=self.device, requires_grad=True)
-
             # Optimize Temperature Scaling by minimizing the CE-Loss when scaling the logits
             ece_criterion = ECELoss().to(self.device)
             current_temperature = torch.nn.Parameter(torch.ones(1, device=self.device, requires_grad=True))
-            current_temperature.requires_grad_()
 
             if self.verbose_temp_scale:
                 before_temperature_nll = F.cross_entropy(logits / current_temperature, labels,
@@ -137,21 +137,24 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
                 print(f'Before temperature - NLL: {before_temperature_nll:.3f}, ECE: {before_temperature_ece:.3f}')
 
-            def eval_curr_temp():
-                optimizer.zero_grad()
-                loss = ece_criterion(logits / current_temperature, labels) \
-                       + F.cross_entropy(logits / current_temperature, labels,
-                                         ignore_index=vocab.PAD_IDX, reduction="mean")
-                loss.backward()
-                return loss
 
-            self.train(True)
+
             with torch.enable_grad() and torch.inference_mode(False):
-                optimizer = optim.LBFGS([current_temperature], lr=0.01, max_iter=10000)
+                optimizer = optim.LBFGS([current_temperature], lr=0.001, max_iter=10000)
+                def eval_curr_temp():
+                    optimizer.zero_grad()
+                    # loss = ece_criterion(logits / current_temperature, labels) \
+                    #        + F.cross_entropy(logits / current_temperature, labels,
+                    #                          ignore_index=vocab.PAD_IDX, reduction="mean")
+                    # loss = ce_logitnorm_loss(logits / current_temperature, labels)
+                    loss = F.cross_entropy(logits / current_temperature, labels,
+                                           ignore_index=vocab.PAD_IDX, reduction="mean")
+                    loss.backward()
+                    return loss
+
                 self.comer_model.eval()
                 self.comer_model.train(False)
                 optimizer.step(eval_curr_temp)
-                optimizer.zero_grad()
 
                 if self.verbose_temp_scale:
                     after_temperature_nll = F.cross_entropy(logits / current_temperature, labels,
@@ -161,55 +164,67 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                     print(f'After temperature - NLL: {after_temperature_nll:.3f}, ECE: {after_temperature_ece:.3f}')
 
                 self.current_temperature = current_temperature
-
+                if self.local_rank == 0:
+                    tb_logger: SummaryWriter = self.logger.experiment
+                    tb_logger.add_scalar(
+                        "temperature_scaling_result",
+                        current_temperature.item(),
+                        self.current_epoch
+                    )
+                if self.current_temperature < 1e-4:
+                    self.current_temperature = torch.nn.Parameter(torch.ones(1, device=self.device))
                 # Find best confidence threshold for pseudo-labeling.
                 # TODO: Move from learnable to heuristic, that's why it's currently disabled
-                if total_correct > 0 and False:
-                    threshold = torch.nn.Parameter(torch.ones(1, device=self.device) * 0.5)
-                    optimizer = optim.LBFGS([threshold], lr=0.01, max_iter=1000)
-
-                    def eval_threshold():
-                        optimizer.zero_grad()
-                        log_th = torch.log(threshold)
-                        # corrects = torch.sum((correct_scores >= log_th).float())
-                        # corrects = torch.sum((torch.tanh(torch.relu(self.hparams.th_optim_sharpening * (correct_scores - log_th)))))
-                        corrects = torch.sum((torch.sigmoid(self.hparams.th_optim_sharpening * (correct_scores - log_th))))
-                        # incorrects = torch.sum((incorrect_scores >= log_th).float())
-                        # incorrects = torch.sum((torch.tanh(torch.relu(self.hparams.th_optim_sharpening * (incorrect_scores - log_th)))))
-                        incorrects = torch.sum(
-                            (torch.sigmoid(self.hparams.th_optim_sharpening * (incorrect_scores - log_th))))
-                        total_passing = corrects + incorrects
-                        #
-
-                        correct_pct = corrects / total_passing if total_passing != 0 else 0.0
-                        coverage_pct = corrects / total_correct
-
-                        loss = (1.0 + self.hparams.th_optim_correct_weight) - (
-                            ((correct_pct * self.hparams.th_optim_correct_weight) + coverage_pct)
-                        )
-
-                        # loss = (total_correct - corrects) + incorrects
-
-                        # print(f"step {loss.item()}, corr: {(corrects / total_passing).item() * 100.0:.1f}"
-                        #       f" cov: {(corrects / total_correct).item() * 100.0:.1f}")
-
-                        loss.backward()
-                        return loss
-
-                    optimizer.step(eval_threshold)
-                    optimizer.zero_grad()
-
-                    if self.verbose_temp_scale:
-                        log_th = torch.log(threshold)
-                        corrects = torch.sum((correct_scores >= log_th).long())
-                        incorrects = torch.sum((incorrect_scores >= log_th).long())
-                        total_passing = corrects + incorrects
-
-                        correct_pct = corrects / total_passing if total_passing != 0 else torch.zeros(1, device=self.device)
-                        coverage_pct = corrects / total_correct
-                        print(f"optim th: {threshold.item():.5f}, corr: {correct_pct.item() * 100.0:.1f}"
-                              f" cov: {coverage_pct.item() * 100.0:.1f}")
-            self.train(False)
+                # correct_scores: Tensor = torch.tensor(correct_scores, device=self.device, requires_grad=True)
+                # total_correct: Tensor = torch.ones(1, device=self.device, dtype=torch.float,
+                #                                    requires_grad=True) * correct_scores.size(0)
+                # if total_correct > 0:
+                #     incorrect_scores: Tensor = torch.tensor(incorrect_scores, device=self.device, requires_grad=True)
+                #     threshold = torch.nn.Parameter(torch.ones(1, device=self.device) * 0.5)
+                #     optimizer = optim.LBFGS([threshold], lr=0.01, max_iter=1000)
+                #
+                #     def eval_threshold():
+                #         optimizer.zero_grad()
+                #         log_th = torch.log(threshold)
+                #         # corrects = torch.sum((correct_scores >= log_th).float())
+                #         # corrects = torch.sum((torch.tanh(torch.relu(self.hparams.th_optim_sharpening * (correct_scores - log_th)))))
+                #         corrects = torch.sum((torch.sigmoid(self.hparams.th_optim_sharpening * (correct_scores - log_th))))
+                #         # incorrects = torch.sum((incorrect_scores >= log_th).float())
+                #         # incorrects = torch.sum((torch.tanh(torch.relu(self.hparams.th_optim_sharpening * (incorrect_scores - log_th)))))
+                #         incorrects = torch.sum(
+                #             (torch.sigmoid(self.hparams.th_optim_sharpening * (incorrect_scores - log_th))))
+                #         total_passing = corrects + incorrects
+                #         #
+                #
+                #         correct_pct = corrects / total_passing if total_passing != 0 else 0.0
+                #         coverage_pct = corrects / total_correct
+                #
+                #         loss = (1.0 + self.hparams.th_optim_correct_weight) - (
+                #             ((correct_pct * self.hparams.th_optim_correct_weight) + coverage_pct)
+                #         )
+                #
+                #         # loss = (total_correct - corrects) + incorrects
+                #
+                #         # print(f"step {loss.item()}, corr: {(corrects / total_passing).item() * 100.0:.1f}"
+                #         #       f" cov: {(corrects / total_correct).item() * 100.0:.1f}")
+                #
+                #         loss.backward()
+                #         return loss
+                #
+                #     optimizer.step(eval_threshold)
+                #     optimizer.zero_grad()
+                #
+                #     if self.verbose_temp_scale:
+                #         log_th = torch.log(threshold)
+                #         corrects = torch.sum((correct_scores >= log_th).long())
+                #         incorrects = torch.sum((incorrect_scores >= log_th).long())
+                #         total_passing = corrects + incorrects
+                #
+                #         correct_pct = corrects / total_passing if total_passing != 0 else torch.zeros(1, device=self.device)
+                #         coverage_pct = corrects / total_correct
+                #         print(f"optim th: {threshold.item():.5f}, corr: {correct_pct.item() * 100.0:.1f}"
+                #               f" cov: {coverage_pct.item() * 100.0:.1f}")
+            # self.train(False)
 
         # sync this manual param optimization across all gpus.
         # since otherwise, this would only be synced at the start of the next forward pass.

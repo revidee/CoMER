@@ -1,10 +1,13 @@
 from typing import Dict, Callable, List, Union, Tuple, Iterable
 
 import torch
+from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
+from torch.utils.tensorboard import SummaryWriter
 
 from comer.datamodules.crohme import Batch, vocab
 from comer.modules import CoMERSelfTraining
+from comer.utils.conf_measures import th_fn_bimin
 from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out)
 import torch.distributed as dist
@@ -86,9 +89,8 @@ class CoMERFixMatch(CoMERSelfTraining):
                 # By dividing with 2, we average between these to get a kind-of log-likelihood again.
                 pseudo_labels.extend(
                     [
-                        vocab.indices2words(h.seq) if (len(h.history) > 0) and (
-                                (h.score / 2) >= self.pseudo_labeling_threshold
-                        ) else [] for h in self.approximate_joint_search(batch.imgs, batch.mask)]
+                        vocab.indices2words(h.seq) if th_fn_bimin(h, self.pseudo_labeling_threshold)
+                        else [] for h in self.approximate_joint_search(batch.imgs, batch.mask)]
                 )
 
                 end_batch(batch, batch_idx)
@@ -103,9 +105,27 @@ class CoMERFixMatch(CoMERSelfTraining):
         dist.barrier()
         dist.all_gather_object(all_gpu_labels, list(to_gather))
         # update the gpu-local trainer-cache
+        total_passed_this_step = 0
         for single_gpu_labels in all_gpu_labels:
             if single_gpu_labels is None:
                 continue
             for fname, label in single_gpu_labels:
+                if len(label) > 0:
+                    total_passed_this_step += 1
                 self.trainer.unlabeled_pseudo_labels[fname] = label
-
+        if self.local_rank == 0:
+            total_passed = 0
+            for label in self.trainer.unlabeled_pseudo_labels.values():
+                if len(label) > 0:
+                    total_passed += 1
+            tb_logger: SummaryWriter = self.logger.experiment
+            tb_logger.add_scalar(
+                "passed_pseudo_labels_total",
+                total_passed,
+                self.current_epoch
+            )
+            tb_logger.add_scalar(
+                "passed_pseudo_labels_in_epoch",
+                total_passed_this_step,
+                self.current_epoch
+            )

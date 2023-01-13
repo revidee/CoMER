@@ -1,8 +1,9 @@
 from typing import List
 
+import torch.nn
 import torchvision.transforms as tr
 from torch.utils.data.dataset import Dataset
-from torchvision.transforms import ToPILImage
+from torchvision.transforms import ToPILImage, Grayscale
 
 from comer.datamodules.crohme import BatchTuple
 from comer.datamodules.utils.randaug import RandAugment
@@ -12,13 +13,13 @@ from comer.datamodules.utils.transforms import ScaleAugmentation, ScaleToLimitRa
 K_MIN = 0.7
 K_MAX = 1.4
 
-H_LO = 16
+H_LO = 8
 H_HI = 256
-W_LO = 16
+W_LO = 8
 W_HI = 1024
 
 
-def build_aug_transform(aug_mode: str):
+def build_aug_transform(aug_mode: str, to_grayscale: bool = False) -> List[torch.nn.Module]:
     trans_list = []
     if aug_mode == "weak":
         trans_list.append(ScaleAugmentation(K_MIN, K_MAX))
@@ -28,11 +29,12 @@ def build_aug_transform(aug_mode: str):
     elif aug_mode == "strong_mod":
         trans_list.append(ToPILImage())
         trans_list.append(RandAugment(3, augments=fixmatch_modified()))
-
     trans_list += [
         ScaleToLimitRange(w_lo=W_LO, w_hi=W_HI, h_lo=H_LO, h_hi=H_HI),
-        tr.ToTensor(),
+        tr.ToTensor()
     ]
+    if to_grayscale:
+        trans_list.append(Grayscale(num_output_channels=1))
     return tr.Compose(trans_list)
 
 class CROHMEDataset(Dataset):
@@ -43,12 +45,12 @@ class CROHMEDataset(Dataset):
     """
     ds: List[BatchTuple]
 
-    def __init__(self, ds: List[BatchTuple], aug_mode_labeled: str, aug_mode_unlabeled: str = "strong") -> None:
+    def __init__(self, ds: List[BatchTuple], aug_mode_labeled: str, aug_mode_unlabeled: str = "strong", to_grayscale: bool = False) -> None:
         super().__init__()
         self.ds = ds
 
-        self.transform_labeled = build_aug_transform(aug_mode_labeled)
-        self.transform_unlabeled = build_aug_transform(aug_mode_unlabeled)
+        self.transform_labeled = build_aug_transform(aug_mode_labeled, to_grayscale)
+        self.transform_unlabeled = build_aug_transform(aug_mode_unlabeled, to_grayscale)
 
     def __getitem__(self, idx):
         file_names, images, labels, unlabeled_start, src_idx = self.ds[idx]

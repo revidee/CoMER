@@ -18,7 +18,6 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
     def __init__(
             self,
             pseudo_labeling_threshold: float,
-            monitor: str,
             **kwargs
     ):
         super().__init__(**kwargs)
@@ -32,30 +31,6 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
         loss = ce_loss(out_hat, out)
         self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch.imgs.shape[0])
         return loss
-
-    def configure_optimizers(self):
-        optimizer = optim.SGD(
-            self.parameters(),
-            lr=self.hparams.learning_rate,
-            momentum=0.9,
-            weight_decay=1e-4,
-        )
-
-        reduce_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode="max",
-            factor=0.25,
-            patience=self.hparams.patience // self.trainer.check_val_every_n_epoch,
-        )
-        scheduler = {
-            "scheduler": reduce_scheduler,
-            "monitor": self.hparams.monitor,
-            "interval": "epoch",
-            "frequency": self.trainer.check_val_every_n_epoch,
-            "strict": True,
-        }
-
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
 
     def validation_step(self, batch: Batch, batch_idx, dataloader_idx):
         if self.current_epoch <= self.trainer.check_val_every_n_epoch:

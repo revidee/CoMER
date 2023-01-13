@@ -1,6 +1,6 @@
 import itertools
 import math
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -95,6 +95,16 @@ class ECELoss(torch.nn.Module):
 
         return ece / total_samples if total_samples > 0 else 0,\
             total_corr / total_samples if total_samples > 0 else 0
+
+    def get_plot_bins(self, predictions: Union[None, List[Tuple[float, List[int], List[int]]]]=None) -> Tuple[List[float], List[float], List[int]]:
+        if predictions is not None:
+            self.reset_predictions()
+            self.add_predictions(predictions)
+        return [
+            sum_corr / n_samples if n_samples > 0 else 0.0 for (n_samples, sum_corr, sum_conf) in zip(self.bin_samples, self.bin_sum_corr, self.bin_sum_confs)
+        ], [
+            sum_conf / n_samples if n_samples > 0 else 0.0 for (n_samples, sum_corr, sum_conf) in zip(self.bin_samples, self.bin_sum_corr, self.bin_sum_confs)
+        ], self.bin_samples, self.ece_for_current_predictions()
 
     def ece_for_predictions(self, predictions: List[Tuple[float, List[int], List[int]]]):
         self.reset_predictions()

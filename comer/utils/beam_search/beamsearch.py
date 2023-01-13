@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from comer.datamodules.crohme import vocab
 from comer.utils.beam_search import BeamManager, invalid_score
 import itertools
+from torch import linalg as LA
 
 
 class BatchedBeamSearch:
@@ -30,10 +31,11 @@ class BatchedBeamSearch:
                  relative_local_pruning_threshold: float = 2,
                  relative_local_pruning_offset: float = .45,
                  length_penalty: float = 1.0,
-                 min_normalized_pseudo_probabilty: float = invalid_score,
+                 min_normalized_pseudo_probabilty: float = 0.05,
                  temperature: float = 1.0,
                  debug: bool = False,
-                 save_logits: bool = False
+                 save_logits: bool = False,
+                 logit_norm_temp: float = -1.,
                  ):
         self.max_beams = max_beams
         self.bi_dir = bi_dir
@@ -41,6 +43,7 @@ class BatchedBeamSearch:
         self.device = device
         self.max_len = max_len
         self.temperature = temperature
+        self.logit_norm_temp = logit_norm_temp
         self.save_logits = save_logits
         self.empty_tensor = torch.empty((0,), device=device)
 
@@ -147,12 +150,16 @@ class BatchedBeamSearch:
             if self.done:
                 break
             unsharpened = decode_step(self.next_src, self.next_src_mask, self.next_input_ids)
+            if self.logit_norm_temp > 0:
+                softmax_input = unsharpened[:, -1, :] / (self.logit_norm_temp * (LA.vector_norm(unsharpened[:, -1, :], dim=-1, keepdim=True) + 1e-7))
+            else:
+                softmax_input = unsharpened[:, -1, :]
             logits = F.log_softmax(
                 #   -> log-probabilities for all vocab-entries for each active beam
                 #   -> e.g. current active beams [[SOS, "1"]] (1 active beam)
                 #           result of F.log_softmax would then be of size [1, vocab-len]
                 #           to describe the log-likelihood of each "token"
-                unsharpened[:, -1, :] / self.temperature,
+                softmax_input / self.temperature,
                 dim=-1
             )
             if not self.save_logits:
@@ -357,13 +364,11 @@ class BatchedBeamSearch:
         scores_l2r: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
         raw_logits_l2r: List[List[Tensor]] = [[] for _ in itertools.repeat(None, batch_size)]
         hyps_r2l: List[List[LongTensor]] = [[]]
-        hyps_r2l_ori: List[List[LongTensor]] = [[]]
         history_r2l: List[List[LongTensor]] = [[]]
         scores_r2l: List[List[Tensor]] = [[]]
         raw_logits_r2l: List[List[Tensor]] = [[]]
         if self.bi_dir:
             hyps_r2l = [[] for _ in itertools.repeat(None, batch_size)]
-            hyps_r2l_ori = [[] for _ in itertools.repeat(None, batch_size)]
             history_r2l = [[] for _ in itertools.repeat(None, batch_size)]
             scores_r2l = [[] for _ in itertools.repeat(None, batch_size)]
             raw_logits_r2l = [[] for _ in itertools.repeat(None, batch_size)]
@@ -374,7 +379,7 @@ class BatchedBeamSearch:
             best_hyps = bm.get_best_l2r_finalized()
             if bm.is_direction_l2r:
                 repeats_l2r[bm.src_idx] += len(best_hyps)
-                for (score, seq, history, raw_logits, ori_seq) in best_hyps:
+                for (score, seq, history, raw_logits) in best_hyps:
                     hyps_l2r[bm.src_idx].append(seq)
                     history_l2r[bm.src_idx].append(history)
                     scores_l2r[bm.src_idx].append(score.unsqueeze(0))
@@ -382,9 +387,8 @@ class BatchedBeamSearch:
                         raw_logits_l2r[bm.src_idx].append(raw_logits)
             else:
                 repeats_r2l[bm.src_idx] += len(best_hyps)
-                for (score, seq, history, raw_logits, ori_seq) in best_hyps:
+                for (score, seq, history, raw_logits) in best_hyps:
                     hyps_r2l[bm.src_idx].append(seq)
-                    hyps_r2l_ori[bm.src_idx].append(ori_seq)
                     history_r2l[bm.src_idx].append(history)
                     scores_r2l[bm.src_idx].append(score.unsqueeze(0))
                     if self.save_logits:
@@ -399,7 +403,6 @@ class BatchedBeamSearch:
                 repeats_l2r, \
                 list(itertools.chain.from_iterable(raw_logits_l2r)), \
                 list(itertools.chain.from_iterable(hyps_r2l)), \
-                list(itertools.chain.from_iterable(hyps_r2l_ori)), \
                 list(itertools.chain.from_iterable(history_r2l)), \
                 torch.cat(flattened_scores_r2l, dim=0) if len(flattened_scores_r2l) > 0 else self.empty_tensor, \
                 repeats_r2l, \
@@ -409,7 +412,6 @@ class BatchedBeamSearch:
             torch.cat(flattened_scores_l2r, dim=0) if len(flattened_scores_l2r) > 0 else self.empty_tensor, \
             repeats_l2r, \
             list(itertools.chain.from_iterable(hyps_r2l)), \
-            list(itertools.chain.from_iterable(hyps_r2l_ori)), \
             list(itertools.chain.from_iterable(history_r2l)), \
             torch.cat(flattened_scores_r2l, dim=0) if len(flattened_scores_r2l) > 0 else self.empty_tensor, \
             repeats_r2l
