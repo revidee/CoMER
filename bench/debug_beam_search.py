@@ -5,8 +5,10 @@ from typing import Dict, Tuple, List, Callable, Union
 from zipfile import ZipFile
 
 import numpy as np
+import sklearn.metrics as metrics
 import torch
 from jsonargparse import CLI
+from matplotlib import pyplot as plt
 from pytorch_lightning import seed_everything
 
 from comer.datamodules import Oracle
@@ -96,7 +98,29 @@ def main(gpu: int = -1):
             oracle = Oracle(full_data)
             oracle.add_data(full_data_test)
 
-            eval_sorting_score(oracle, True)
+            # eval_sorting_score(oracle, True)
+            fig, axes = plt.subplots(1)
+
+            precisions, recalls, auc = average_precision(
+                torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu')),
+                score_bimin,
+                oracle,
+                True
+            )
+            visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
+            visual.plot(ax=axes, name="Partial", color='red')
+
+            precisions, recalls, auc = average_precision(
+                torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu')),
+                score_bimin,
+                oracle,
+                False
+            )
+            visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
+            visual.plot(ax=axes, name="Full")
+
+            plt.show()
+
 
             # hyps: Dict[str, Hypothesis] = torch.load("../hyps_s_35_new_original_ts_ece.pt",
             #                                              map_location=torch.device('cpu'))
@@ -753,6 +777,8 @@ def gauss_sum(n):
     return n * (n + 1) / 2
 
 def partial_label(hyp: Hypothesis) -> Tuple[bool, List[int], Union[List[int], None]]:
+    if len(hyp.seq) < 2:
+        return False, hyp.seq, None
     avgs = np.array([(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))])
     idx = np.argmin(avgs)
 
@@ -832,21 +858,21 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False):
             label = oracle.get_gt_indices(fname)
 
             if l2r_len:
-                if general_levenshtein(label[:l2r_len], hyp[1]) != 0:
+                if label[:l2r_len] != hyp[1]:
                     wrong_idx_sum += best_i
                     wrong_hyps += 1
             else:
                 skipped_partials += 1
 
             if r2l_len:
-                if general_levenshtein(label[(len(label) - r2l_len):], hyp[2]) != 0:
+                if label[(len(label) - r2l_len):] != hyp[2]:
                     wrong_idx_sum += best_i
                     wrong_hyps += 1
             else:
                 skipped_partials += 1
-        elif oracle.levenshtein_indices(fname, hyp[1]) != 0:
+        elif oracle.get_gt_indices(fname) != hyp[1]:
             wrong_idx_sum += best_i * partial_bidir
-            wrong_hyps += 2
+            wrong_hyps += partial_bidir
 
     total_hyps = (total_hyps * partial_bidir) - skipped_partials
 
@@ -855,8 +881,81 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False):
     bc_score = gauss_sum(total_hyps / partial_bidir) * partial_bidir - gauss_sum(correct_hyps / partial_bidir) * partial_bidir
 
     wc_score = gauss_sum(wrong_hyps / partial_bidir) * partial_bidir
-    print(total_partials, skipped_partials)
     return zero_safe_division(bc_score - wrong_idx_sum, bc_score - wc_score) * 100
+
+def average_precision(hyps, scoring_fn, oracle, partial: bool = False):
+    partial_bidir = 2 if partial else 1
+
+    splitted_fnames = []
+    splitted_hyps: List[Tuple[bool, List[int], Union[List[int], None]]] = []
+    splitted_scores = []
+
+    for (fname, hyp) in hyps.items():
+        splitted_fnames.append(fname)
+        if partial:
+            splitted_hyps.append(partial_label(hyp))
+        else:
+            splitted_hyps.append((False, hyp.seq, None))
+        splitted_scores.append(scoring_fn(hyp))
+
+    splitted_scores = np.array(splitted_scores)
+    splitted_scores_sorted = np.argsort(splitted_scores)[::-1]
+
+    cumulative_tp = 0
+
+    for best_i, idx in enumerate(splitted_scores_sorted):
+        hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
+        fname: str = splitted_fnames[idx]
+        if partial and hyp[0]:
+            l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
+            label = oracle.get_gt_indices(fname)
+            if l2r_len:
+                if label[:l2r_len] == hyp[1]:
+                    cumulative_tp += 1
+            if r2l_len:
+                if label[(len(label) - r2l_len):] == hyp[2]:
+                    cumulative_tp += 1
+        elif oracle.get_gt_indices(fname) == hyp[1]:
+            cumulative_tp += partial_bidir
+
+    total_tp, cumulative_tp = cumulative_tp, 0
+    cumulative_fp = 0
+    precisions = []
+    recalls = []
+
+    for best_i, idx in enumerate(splitted_scores_sorted):
+        hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
+        fname: str = splitted_fnames[idx]
+        if partial and hyp[0]:
+            l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
+            label = oracle.get_gt_indices(fname)
+
+            if l2r_len:
+                if label[:l2r_len] == hyp[1]:
+                    cumulative_tp += 1
+                else:
+                    cumulative_fp += 1
+
+            if r2l_len:
+                if label[(len(label) - r2l_len):] == hyp[2]:
+                    cumulative_tp += 1
+                else:
+                    cumulative_fp += 1
+        elif oracle.get_gt_indices(fname) == hyp[1]:
+            cumulative_tp += partial_bidir
+        else:
+            cumulative_fp += partial_bidir
+
+        precision = cumulative_tp / (cumulative_tp + cumulative_fp)
+        recall = cumulative_tp / total_tp
+
+        precisions.append(precision)
+        recalls.append(recall)
+
+    precisions = np.array(precisions)
+    recalls = np.array(recalls)
+    return precisions, recalls, metrics.auc(recalls, precisions)
+
 
 def rate_threshold(hyps: Dict[str, Hypothesis],
                    oracle: Oracle,
