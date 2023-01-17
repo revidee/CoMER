@@ -19,8 +19,6 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
     def __init__(
             self,
-            th_optim_correct_weight: float,
-            th_optim_sharpening: float,
             **kwargs
     ):
         super().__init__(**kwargs)
@@ -128,7 +126,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
             # Optimize Temperature Scaling by minimizing the CE-Loss when scaling the logits
             ece_criterion = ECELoss().to(self.device)
-            current_temperature = torch.nn.Parameter(torch.ones(1, device=self.device, requires_grad=True))
+            current_temperature = torch.nn.Parameter(torch.ones(1, device=self.device, requires_grad=True) * 1.5)
 
             if self.verbose_temp_scale:
                 before_temperature_nll = F.cross_entropy(logits / current_temperature, labels,
@@ -140,15 +138,15 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
 
             with torch.enable_grad() and torch.inference_mode(False):
-                optimizer = optim.LBFGS([current_temperature], lr=0.001, max_iter=10000)
+                optimizer = optim.LBFGS([current_temperature], lr=0.01, max_iter=100)
                 def eval_curr_temp():
                     optimizer.zero_grad()
-                    # loss = ece_criterion(logits / current_temperature, labels) \
-                    #        + F.cross_entropy(logits / current_temperature, labels,
-                    #                          ignore_index=vocab.PAD_IDX, reduction="mean")
+                    loss = ece_criterion(logits / current_temperature, labels) \
+                           + F.cross_entropy(logits / current_temperature, labels,
+                                             ignore_index=vocab.PAD_IDX, reduction="mean")
                     # loss = ce_logitnorm_loss(logits / current_temperature, labels)
-                    loss = F.cross_entropy(logits / current_temperature, labels,
-                                           ignore_index=vocab.PAD_IDX, reduction="mean")
+                    # loss = F.cross_entropy(logits / current_temperature, labels,
+                    #                        ignore_index=vocab.PAD_IDX, reduction="mean")
                     loss.backward()
                     return loss
 

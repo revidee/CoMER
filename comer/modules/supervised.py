@@ -1,6 +1,8 @@
+import math
 import zipfile
 from typing import List, Tuple
 
+import numpy as np
 import pytorch_lightning as pl
 import torch.optim as optim
 from torch import FloatTensor, LongTensor
@@ -31,10 +33,10 @@ class CoMERSupervised(pl.LightningModule):
         max_len: int,
         alpha: float,
         early_stopping: bool,
-        temperature: float,
         # training
         learning_rate: float,
-        patience: int,
+        learning_rate_target: float,
+        steplr_steps: float,
         test_suffix: str = "",
     ):
         super().__init__()
@@ -158,7 +160,10 @@ class CoMERSupervised(pl.LightningModule):
         #     factor=0.25,
         #     patience=self.hparams.patience // self.trainer.check_val_every_n_epoch,
         # )
-        step_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=self.hparams.patience, gamma=0.90)
+        # self.hparams.learning_rate_target
+        gamma = math.exp(math.log(self.hparams.learning_rate_target/self.hparams.learning_rate) / self.hparams.steplr_steps)
+        step_size = int(math.ceil(self.trainer.max_epochs / (self.hparams.steplr_steps + 1)))
+        step_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
         scheduler = {
             "scheduler": step_scheduler,
             "interval": "epoch",

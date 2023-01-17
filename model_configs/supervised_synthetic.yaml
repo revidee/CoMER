@@ -16,9 +16,9 @@ fit:
       - class_path: pytorch_lightning.callbacks.ModelCheckpoint
         init_args:
           save_top_k: 1
-          monitor: val_Loss
+          monitor: val_loss
           mode: min
-          filename: '{epoch}-{step}-{val_Loss:.4f}'
+          filename: '{epoch}-{step}-{val_loss:.4f}'
 #    accelerator: 'cpu'
     # fast_dev_run: True
     accelerator: 'gpu'
@@ -52,13 +52,15 @@ fit:
       early_stopping: false
       temperature: 1.0
       # training
-      learning_rate: 0.08
-      patience: 20
+      learning_rate: 0.08,
+      learning_rate_target: 8e-5,
+      steplr_steps: 40
   data:
     class_path: comer.datamodules.CROHMESupvervisedDatamodule
     init_args:
       zipfile_path: "/data/mahlers/synthetic/ntcir12crohmevoc100k.zip"
       test_year: "test"
+      val_year: "test"
       train_batch_size: 8
       eval_batch_size: 4
       num_workers: 5

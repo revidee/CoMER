@@ -29,6 +29,7 @@ if __name__ == '__main__':
     )
     dm = CROHMESelfTrainingDatamodule(
         test_year='2019',
+        val_year='2014',
         eval_batch_size=4,
         zipfile_path='data.zip',
         train_batch_size=8,
@@ -38,8 +39,11 @@ if __name__ == '__main__':
 
     model: CoMERSelfTraining = CoMERSelfTraining.load_from_checkpoint(
         './bench/baseline_t112.ckpt',
-        learning_rate=0.001,
-        patience=20,
+        # Training (Supervised Tuning)
+        learning_rate=0.00125,
+        learning_rate_target=8e-5,
+        steplr_steps=40,
+        # Self-Training Params
         pseudo_labeling_threshold=0.985
     )
 

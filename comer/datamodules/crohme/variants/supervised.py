@@ -16,6 +16,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             self,
             zipfile_path: str = f"{os.path.dirname(os.path.realpath(__file__))}/../../../../data.zip",
             test_year: str = "2014",
+            val_year: str = "2014",
             train_batch_size: int = 8,
             eval_batch_size: int = 4,
             num_workers: int = 5,
@@ -28,6 +29,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
         assert isinstance(test_year, str)
         self.zipfile_path = zipfile_path
         self.test_year = test_year
+        self.val_year = val_year
         self.train_batch_size = train_batch_size
         self.eval_batch_size = eval_batch_size
         self.num_workers = num_workers
@@ -47,7 +49,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
                     self.train_aug,
                 )
                 self.val_dataset = CROHMEDataset(
-                    build_dataset(archive, self.test_year, self.eval_batch_size)[0],
+                    build_dataset(archive, self.val_year, self.eval_batch_size)[0],
                     "",
                     "",
                 )

@@ -70,7 +70,7 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
                     self.trainer.unlabeled_pseudo_labels[entry.file_name] = []
 
                 self.val_dataset = CROHMEDataset(
-                    build_dataset(archive, self.test_year, self.eval_batch_size)[0],
+                    build_dataset(archive, self.val_year, self.eval_batch_size)[0],
                     "",
                 )
             if stage == "test" or stage is None:

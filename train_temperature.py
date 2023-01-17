@@ -54,6 +54,7 @@ if __name__ == '__main__':
         )
         dm = CROHMEFixMatchInterleavedDatamodule(
             test_year='2019',
+            val_year='2014',
             eval_batch_size=4,
             zipfile_path='data.zip',
             train_batch_size=8,
@@ -72,15 +73,14 @@ if __name__ == '__main__':
         model: CoMERFixMatchInterleavedLogitNormTempScale = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
             cp_path,
             strict=False,
-            learning_rate=0.0008,
-            patience=20,
+            # Training (Supervised Tuning)
+            learning_rate=0.00125,
+            learning_rate_target=8e-5,
+            steplr_steps=40,
+            # Self-Training
             pseudo_labeling_threshold=0.2,
             lambda_u=1.0,
-            temperature=3.0,
-            monitor="val_ExpRate/dataloader_idx_0",
             # logit_norm_temp=0.05,
-            th_optim_correct_weight=9,
-            th_optim_sharpening=50
         )
         model.set_verbose_temp_scale_optim(True)
 

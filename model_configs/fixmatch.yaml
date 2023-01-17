@@ -46,10 +46,11 @@ fit:
       max_len: 200
       alpha: 1.0
       early_stopping: false
-      temperature: 1.0
       # training
-      learning_rate: 0.08
-      patience: 20
+      learning_rate: 0.08,
+      learning_rate_target: 8e-5,
+      steplr_steps: 50
+      # self-training
       pseudo_labeling_threshold: 0.9875
       lambda_u: 1.0
   data:
@@ -57,6 +58,7 @@ fit:
     init_args:
       zipfile_path: data.zip
       test_year: "2019"
+      val_year: "2014"
       train_batch_size: 8
       eval_batch_size: 4
       num_workers: 5

@@ -12,8 +12,6 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
 
     def __init__(self,
                  logit_norm_temp: float,
-                 keep_old_preds: bool,
-                 monitor: str,
                  **kwargs):
         super().__init__(**kwargs)
         self.save_hyperparameters()

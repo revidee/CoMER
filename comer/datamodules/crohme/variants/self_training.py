@@ -31,7 +31,7 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
                     self.train_aug,
                 )
                 self.val_dataset = CROHMEDataset(
-                    build_dataset(archive, self.test_year, self.eval_batch_size)[0],
+                    build_dataset(archive, self.val_year, self.eval_batch_size)[0],
                     "",
                     "",
                 )

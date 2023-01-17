@@ -4,7 +4,8 @@ import torch
 from jsonargparse import CLI
 
 from comer.datamodules import CROHMESupvervisedDatamodule
-from comer.modules import CoMERSupervised
+from comer.modules import CoMERSupervised, CoMERFixMatchInterleavedLogitNormTempScale, \
+    CoMERFixMatchInterleavedTemperatureScaling
 from pytorch_lightning import Trainer, seed_everything
 
 
@@ -25,7 +26,7 @@ def main(
 
     device = torch.device(f'cuda:{gpu}')
 
-    model = CoMERSupervised.load_from_checkpoint(cp, test_suffix=f"{gpu}").to(device).eval()
+    model = CoMERFixMatchInterleavedTemperatureScaling.load_from_checkpoint(cp, test_suffix=f"{gpu}").to(device).eval()
 
     trainer.test(model, datamodule=dm)
 
