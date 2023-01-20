@@ -420,8 +420,9 @@ class DecodeModel(pl.LightningModule):
         List[Hypothesis]: [batch_size,]
         """
         GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS = [
-            (30, 0.3),
-            (60, 0.1),
+            (30, 0.1),
+            # (30, 0.3),
+            # (60, 0.1),
         ]
 
         global_pruning_threshold = invalid_score

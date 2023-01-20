@@ -112,7 +112,7 @@ class CoMERFixMatch(CoMERSelfTraining):
             for fname, label in single_gpu_labels:
                 if len(label) > 0:
                     total_passed_this_step += 1
-                self.trainer.unlabeled_pseudo_labels[fname] = label
+                    self.trainer.unlabeled_pseudo_labels[fname] = label
         if self.local_rank == 0:
             total_passed = 0
             for label in self.trainer.unlabeled_pseudo_labels.values():
@@ -129,3 +129,4 @@ class CoMERFixMatch(CoMERSelfTraining):
                 total_passed_this_step,
                 self.current_epoch
             )
+            print(f"passed-epoch: {total_passed_this_step}, total: {total_passed}")
