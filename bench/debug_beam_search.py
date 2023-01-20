@@ -21,10 +21,11 @@ from comer.utils import ECELoss
 from comer.utils.conf_measures import th_fn_bimin, score_ori, score_bimin, score_avg, score_rev_avg, score_bisum, \
     score_bisum_avg, score_bi_avg, score_sum
 from comer.utils.utils import Hypothesis
+from operator import ne
+from itertools import compress, count
 
 # checkpoint_path = "./bench/epoch3.ckpt"
 checkpoint_path = './lightning_logs/version_48/checkpoints/ep=251-st=51982-valLoss=0.3578.ckpt'
-
 
 use_fn = th_fn_bimin
 
@@ -64,8 +65,10 @@ def calc_min(th_pseudo_perc: float, all_hyps: Dict[str, Hypothesis], oracle: Ora
 def single_step(input_tuple: Tuple[float, Dict[str, Hypothesis], Oracle]):
     return calc_min(input_tuple[0], input_tuple[1], input_tuple[2], 1.0), input_tuple[0]
 
+
 def to_rounded_exp(logits: List[float]):
     return [f"{math.exp(logit) * 100:.2f}" for logit in logits]
+
 
 def main(gpu: int = -1):
     print("init")
@@ -87,40 +90,53 @@ def main(gpu: int = -1):
         with ZipFile("data.zip") as archive:
             seed_everything(7)
             full_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train",
-                                                                                           to_device=device)
+                                                                                     to_device=device)
             labeled_indices, unlabeled_indices = get_splitted_indices(
                 full_data,
                 unlabeled_pct=0.65,
                 sorting_mode=1
             )
             full_data_test: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "2019",
-                                                                                           to_device=device)
+                                                                                          to_device=device)
             oracle = Oracle(full_data)
             oracle.add_data(full_data_test)
 
-            # eval_sorting_score(oracle, True)
+            # eval_sorting_score(oracle, True, 1.0, True)
+
             fig, axes = plt.subplots(1)
 
+            hyps = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
+
             precisions, recalls, auc = average_precision(
-                torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu')),
+                hyps,
                 score_bimin,
                 oracle,
+                None
+            )
+            visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
+            visual.plot(ax=axes, name="Original", color='red')
+
+            precisions, recalls, auc = average_precision(
+                hyps,
+                score_bimin,
+                oracle,
+                1.0,
                 True
             )
             visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
-            visual.plot(ax=axes, name="Partial", color='red')
+            visual.plot(ax=axes, name="Oracle", color='lime')
 
-            precisions, recalls, auc = average_precision(
-                torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu')),
-                score_bimin,
-                oracle,
-                False
-            )
-            visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
-            visual.plot(ax=axes, name="Full")
+            for fac in [0.1, 0.25, 1.0, 5.0]:
+                precisions, recalls, auc = average_precision(
+                    hyps,
+                    score_bimin,
+                    oracle,
+                    fac
+                )
+                visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
+                visual.plot(ax=axes, name=f"Partial std_fac={fac}")
 
             plt.show()
-
 
             # hyps: Dict[str, Hypothesis] = torch.load("../hyps_s_35_new_original_ts_ece.pt",
             #                                              map_location=torch.device('cpu'))
@@ -181,11 +197,6 @@ def main(gpu: int = -1):
             #         #     print(vocab.indices2words(rev_hyp.tolist()))
             #         #     print(to_rounded_exp(hyp.all_r2l_history[i].tolist()))
 
-
-
-
-
-
             # for idx in [1, 2, 3, 4, 5, 10, 100]:
             #     if idx != 1:
             #         hyp_file = f"../hyps_st_15_tmp_{idx}.pt"
@@ -231,8 +242,6 @@ def main(gpu: int = -1):
             #     "../hyps_st_15_tmp_100_noglobal.pt",
             # ]
             #
-
-
 
             # correct_hyps = 0
             # correct_median = 0
@@ -479,7 +488,6 @@ def main(gpu: int = -1):
             #                 correct += 1
             #             total += 1
             #         print(f"{name}, best {p * 100:.0f}%: {zero_safe_division(correct * 100, total):.2f} lev: {zero_safe_division(total_lev, total):.3f}")
-
 
             # print("MedianMinConf", counters["median_conf_passed"],
             #       f'{zero_safe_division(counters["median_conf_passed_correct"] * 100, counters["median_conf_passed"]):.2f}',
@@ -773,10 +781,33 @@ def full(batch: Batch, model, shapes, use_new: bool = False):
     return model.approximate_joint_search(batch.imgs, batch.mask, use_new=use_new)
     # print(hyps[0].score, len(hyps[0].seq), vocab.indices2words(hyps[0].seq))
 
+
 def gauss_sum(n):
     return n * (n + 1) / 2
 
-def partial_label(hyp: Hypothesis) -> Tuple[bool, List[int], Union[List[int], None]]:
+
+def partial_label(hyp: Hypothesis, std_fac: float = 1.0, fname: Union[str, None] = None,
+                  oracle: Union[Oracle, None] = None) -> Tuple[bool, List[int], Union[List[int], None]]:
+    if oracle is not None and fname is not None:
+        label = oracle.get_gt_indices(fname)
+        if label == hyp.seq:
+            return False, hyp.seq, None
+
+        hyp_len, label_len = len(hyp.seq), len(label)
+        min_len = min((hyp_len, label_len))
+
+        if label[:min_len] == hyp.seq[:min_len]:
+            l2r_seq = hyp.seq[:min_len]
+        else:
+            first_mismatch_l2r = next(compress(count(), map(ne, label[:min_len], hyp.seq[:min_len])))
+            l2r_seq = hyp.seq[:first_mismatch_l2r]
+
+        if label[-min_len:] == hyp.seq[-min_len:]:
+            r2l_seq = hyp.seq[-min_len:]
+        else:
+            first_mismatch_r2l = next(compress(count(), map(ne, reversed(label[-min_len:]), reversed(hyp.seq[-min_len:]))))
+            r2l_seq = hyp.seq[hyp_len - first_mismatch_r2l:]
+        return True, l2r_seq, r2l_seq
     if len(hyp.seq) < 2:
         return False, hyp.seq, None
     avgs = np.array([(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))])
@@ -786,17 +817,19 @@ def partial_label(hyp: Hypothesis) -> Tuple[bool, List[int], Union[List[int], No
     masked_avgs.mask[idx] = True
 
     m = masked_avgs.mean()
-    c = masked_avgs - m
-    std = np.dot(c, c) / masked_avgs.size
+    power = np.dot(masked_avgs, masked_avgs) / masked_avgs.size
+    var = power - m ** 2
+    std = np.sqrt(var)
 
     min_dev = m - avgs[idx]
 
-    if min_dev > std:
+    if min_dev >= (std * std_fac):
         # mask it and use l2r / r2l from there
-        return True, hyp.seq[:idx], hyp.seq[idx+1:]
+        return True, hyp.seq[:idx], hyp.seq[idx + 1:]
     return False, hyp.seq, None
 
-def eval_sorting_score(oracle: Oracle, partial: bool = False):
+
+def eval_sorting_score(oracle: Oracle, partial: bool = False, partial_std_fac: float = 1.0, use_oracle: bool = False):
     # Loads multiple hyp collections from different checkpoints and evaluates multiple conf-measures based
     # on the sorting of the confidence scores
     hyp_files = [
@@ -819,10 +852,13 @@ def eval_sorting_score(oracle: Oracle, partial: bool = False):
                       ("BI_AVG", score_bi_avg), ("BIMIN", score_bimin), ("MULT", score_sum), ("BIMULT", score_bisum)]:
         print(f"{name}".ljust(14), end="")
         for hyps in all_hyps.values():
-            print(f"{sorting_score(hyps, sfn, oracle, partial):.2f}".ljust(16), end="")
+            print(f"{sorting_score(hyps, sfn, oracle, partial, partial_std_fac, use_oracle):.2f}".ljust(16), end="")
         print()
 
-def sorting_score(hyps, scoring_fn, oracle, partial: bool = False):
+
+def sorting_score(hyps, scoring_fn, oracle, partial: bool = False,
+                  partial_std_fac: float = 1.0, use_oracle: bool = False
+                  ):
     splitted_fnames = []
     splitted_hyps: List[Tuple[bool, List[int], Union[List[int], None]]] = []
     splitted_scores = []
@@ -830,14 +866,14 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False):
     for (fname, hyp) in hyps.items():
         splitted_fnames.append(fname)
         if partial:
-            splitted_hyps.append(partial_label(hyp))
+            splitted_hyps.append(
+                partial_label(hyp, partial_std_fac, fname if use_oracle else None, oracle if use_oracle else None))
         else:
             splitted_hyps.append((False, hyp.seq, None))
         splitted_scores.append(scoring_fn(hyp))
 
     splitted_scores = np.array(splitted_scores)
     splitted_scores_sorted = np.argsort(splitted_scores)[::-1]
-
 
     partial_bidir = 2 if partial else 1
     total_hyps = len(splitted_scores_sorted)
@@ -847,7 +883,6 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False):
 
     skipped_partials = 0
     total_partials = 0
-
 
     for best_i, idx in enumerate(splitted_scores_sorted):
         hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
@@ -865,7 +900,7 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False):
                 skipped_partials += 1
 
             if r2l_len:
-                if label[(len(label) - r2l_len):] != hyp[2]:
+                if label[-r2l_len:] != hyp[2]:
                     wrong_idx_sum += best_i
                     wrong_hyps += 1
             else:
@@ -873,18 +908,21 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False):
         elif oracle.get_gt_indices(fname) != hyp[1]:
             wrong_idx_sum += best_i * partial_bidir
             wrong_hyps += partial_bidir
-
     total_hyps = (total_hyps * partial_bidir) - skipped_partials
 
     correct_hyps = total_hyps - wrong_hyps
 
-    bc_score = gauss_sum(total_hyps / partial_bidir) * partial_bidir - gauss_sum(correct_hyps / partial_bidir) * partial_bidir
+    bc_score = gauss_sum(total_hyps / partial_bidir) * partial_bidir - gauss_sum(
+        correct_hyps / partial_bidir) * partial_bidir
 
     wc_score = gauss_sum(wrong_hyps / partial_bidir) * partial_bidir
     return zero_safe_division(bc_score - wrong_idx_sum, bc_score - wc_score) * 100
 
-def average_precision(hyps, scoring_fn, oracle, partial: bool = False):
-    partial_bidir = 2 if partial else 1
+
+def average_precision(hyps, scoring_fn, oracle, partial_std_fac: Union[float, None] = None, use_oracle: bool = False
+                      ):
+    do_partial = partial_std_fac is not None
+    partial_bidir = 2 if do_partial else 1
 
     splitted_fnames = []
     splitted_hyps: List[Tuple[bool, List[int], Union[List[int], None]]] = []
@@ -892,8 +930,9 @@ def average_precision(hyps, scoring_fn, oracle, partial: bool = False):
 
     for (fname, hyp) in hyps.items():
         splitted_fnames.append(fname)
-        if partial:
-            splitted_hyps.append(partial_label(hyp))
+        if do_partial:
+            splitted_hyps.append(
+                partial_label(hyp, partial_std_fac, fname if use_oracle else None, oracle if use_oracle else None))
         else:
             splitted_hyps.append((False, hyp.seq, None))
         splitted_scores.append(scoring_fn(hyp))
@@ -901,22 +940,26 @@ def average_precision(hyps, scoring_fn, oracle, partial: bool = False):
     splitted_scores = np.array(splitted_scores)
     splitted_scores_sorted = np.argsort(splitted_scores)[::-1]
 
-    cumulative_tp = 0
+    calc_tp_as_all_correct = True
 
-    for best_i, idx in enumerate(splitted_scores_sorted):
-        hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
-        fname: str = splitted_fnames[idx]
-        if partial and hyp[0]:
-            l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
-            label = oracle.get_gt_indices(fname)
-            if l2r_len:
-                if label[:l2r_len] == hyp[1]:
-                    cumulative_tp += 1
-            if r2l_len:
-                if label[(len(label) - r2l_len):] == hyp[2]:
-                    cumulative_tp += 1
-        elif oracle.get_gt_indices(fname) == hyp[1]:
-            cumulative_tp += partial_bidir
+    if calc_tp_as_all_correct:
+        cumulative_tp = 0
+        for best_i, idx in enumerate(splitted_scores_sorted):
+            hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
+            fname: str = splitted_fnames[idx]
+            if do_partial and hyp[0]:
+                l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
+                label = oracle.get_gt_indices(fname)
+                if l2r_len:
+                    if label[:l2r_len] == hyp[1]:
+                        cumulative_tp += 1
+                if r2l_len:
+                    if label[-r2l_len:] == hyp[2]:
+                        cumulative_tp += 1
+            elif oracle.get_gt_indices(fname) == hyp[1]:
+                cumulative_tp += partial_bidir
+    else:
+        cumulative_tp = partial_bidir * len(splitted_scores_sorted)
 
     total_tp, cumulative_tp = cumulative_tp, 0
     cumulative_fp = 0
@@ -926,7 +969,7 @@ def average_precision(hyps, scoring_fn, oracle, partial: bool = False):
     for best_i, idx in enumerate(splitted_scores_sorted):
         hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
         fname: str = splitted_fnames[idx]
-        if partial and hyp[0]:
+        if do_partial and hyp[0]:
             l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
             label = oracle.get_gt_indices(fname)
 
@@ -937,7 +980,7 @@ def average_precision(hyps, scoring_fn, oracle, partial: bool = False):
                     cumulative_fp += 1
 
             if r2l_len:
-                if label[(len(label) - r2l_len):] == hyp[2]:
+                if label[-r2l_len:] == hyp[2]:
                     cumulative_tp += 1
                 else:
                     cumulative_fp += 1
@@ -986,7 +1029,7 @@ def rate_threshold(hyps: Dict[str, Hypothesis],
 
 
 def eval_confs_by_thresholds(hyps: Dict[str, Hypothesis],
-                             oracle: Oracle,):
+                             oracle: Oracle, ):
     # evaluates a multiple conf-measures on a batch of hypothesis, based on multiple thresholds,
     # the error rate on passed hyps, average levenshtein error
     # Print the metrics according to this header:
@@ -995,12 +1038,14 @@ def eval_confs_by_thresholds(hyps: Dict[str, Hypothesis],
     for thresh in [0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 0.9, 0.925, 0.95, 0.96, 0.975]:
         print(f"{thresh}".ljust(5), end="")
         for sfn in [score_ori, score_avg, score_bimin]:
-            passed, incorrect, incorrect_with_wrong_len, incorrect_lev_dist_sum = rate_threshold(hyps, oracle, math.log(thresh), sfn)
+            passed, incorrect, incorrect_with_wrong_len, incorrect_lev_dist_sum = rate_threshold(hyps, oracle,
+                                                                                                 math.log(thresh), sfn)
             print(f" {passed}".ljust(6) +
-                                f" {incorrect} ({incorrect * 100 / passed:.1f})".ljust(13) +
-                                f" {incorrect_with_wrong_len} ({zero_safe_division(incorrect_with_wrong_len * 100, incorrect):.1f}) ".ljust(13) +
-                                f" {incorrect_lev_dist_sum} {incorrect_lev_dist_sum / passed:.2f} ".ljust(11) +
-                                f" {zero_safe_division(incorrect_lev_dist_sum, incorrect):.2f}  ".ljust(8), end='')
+                  f" {incorrect} ({incorrect * 100 / passed:.1f})".ljust(13) +
+                  f" {incorrect_with_wrong_len} ({zero_safe_division(incorrect_with_wrong_len * 100, incorrect):.1f}) ".ljust(
+                      13) +
+                  f" {incorrect_lev_dist_sum} {incorrect_lev_dist_sum / passed:.2f} ".ljust(11) +
+                  f" {zero_safe_division(incorrect_lev_dist_sum, incorrect):.2f}  ".ljust(8), end='')
     print()
 
 

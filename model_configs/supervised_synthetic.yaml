@@ -54,7 +54,7 @@ fit:
       # training
       learning_rate: 0.08,
       learning_rate_target: 8e-5,
-      steplr_steps: 40
+      steplr_steps: 8
   data:
     class_path: comer.datamodules.CROHMESupvervisedDatamodule
     init_args:

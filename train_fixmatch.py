@@ -23,18 +23,18 @@ class CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams(CoMERF
 if __name__ == '__main__':
     seed_everything(7)
 
-    # monitor_suffix = '/dataloader_idx_0'
-    monitor_suffix = ''
+    monitor_suffix = '/dataloader_idx_0'
+    # monitor_suffix = ''
 
     trainer = UnlabeledValidationExtraStepTrainer(
         unlabeled_val_loop=True,
         accelerator='gpu',
-        devices=[0, 1, 2, 3, 4, 5, 6, 7],
+        devices=[3, 4],
         strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
-        max_epochs=300,
+        max_epochs=400,
         deterministic=True,
-        reload_dataloaders_every_n_epochs=1,
-        check_val_every_n_epoch=1,
+        reload_dataloaders_every_n_epochs=2,
+        check_val_every_n_epoch=2,
         callbacks=[
             LearningRateMonitor(logging_interval='epoch'),
             ModelCheckpoint(save_top_k=1,
@@ -50,12 +50,13 @@ if __name__ == '__main__':
                             auto_insert_metric_name=False
                             ),
         ],
-        precision=32
+        precision=32,
+        sync_batchnorm=True
     )
     # dm = CROHMEFixMatchOracleDatamodule(
-    dm = CROHMESupvervisedDatamodule(
+    dm = CROHMEFixMatchInterleavedDatamodule(
         test_year='2019',
-        val_year='2014',
+        val_year='2019',
         eval_batch_size=4,
         zipfile_path='data.zip',
         train_batch_size=8,
@@ -67,14 +68,14 @@ if __name__ == '__main__':
     )
 
     model: CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams = CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams.load_from_checkpoint(
-        './lightning_logs/version_21/checkpoints/epoch=289-step=64960-val_ExpRate=0.3628.ckpt',
+        './lightning_logs/version_77/checkpoints/epoch=41-step=236712-val_ExpRate=0.9099.ckpt',
         strict=False,
         # Training (Supervised Tuning)
-        learning_rate=0.00125,
+        learning_rate=0.08,
         learning_rate_target=8e-5,
-        steplr_steps=60,
+        steplr_steps=10,
         # Self-Training Params
-        pseudo_labeling_threshold=0.3,
+        pseudo_labeling_threshold=0.8,
         lambda_u=1.0,
         # logit_norm_temp=0.1
     )

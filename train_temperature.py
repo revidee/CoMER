@@ -73,10 +73,6 @@ if __name__ == '__main__':
         model: CoMERFixMatchInterleavedLogitNormTempScale = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
             cp_path,
             strict=False,
-            # Training (Supervised Tuning)
-            learning_rate=0.00125,
-            learning_rate_target=8e-5,
-            steplr_steps=40,
             # Self-Training
             pseudo_labeling_threshold=0.2,
             lambda_u=1.0,

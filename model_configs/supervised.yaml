@@ -13,19 +13,23 @@ fit:
           monitor: val_ExpRate
           mode: max
           filename: '{epoch}-{step}-{val_ExpRate:.4f}'
-      - class_path: comer.callbacks.SelfTrainingUpdater
+      - class_path: pytorch_lightning.callbacks.ModelCheckpoint
         init_args:
-          confidence_threshold: 0.6
+          save_top_k: 1
+          monitor: val_loss
+          mode: min
+          filename: '{epoch}-{step}-{val_loss:.4f}'
 #    accelerator: 'cpu'
     # fast_dev_run: True
     accelerator: 'gpu'
-    devices: 0,1
+    devices: 3,4
+    sync_batchnorm: true
     strategy:
       class_path: pytorch_lightning.strategies.ddp.DDPStrategy
       init_args:
         find_unused_parameters: False
     check_val_every_n_epoch: 2
-    max_epochs: 300
+    max_epochs: 600
     deterministic: true
   model:
     class_path: comer.modules.CoMERSupervised
@@ -50,13 +54,13 @@ fit:
       # training
       learning_rate: 0.08,
       learning_rate_target: 8e-5,
-      steplr_steps: 50
+      steplr_steps: 12
   data:
     class_path: comer.datamodules.CROHMESupvervisedDatamodule
     init_args:
       zipfile_path: data.zip
       test_year: "2019"
-      val_year: "2014"
+      val_year: "2019"
       train_batch_size: 8
       eval_batch_size: 4
       num_workers: 5

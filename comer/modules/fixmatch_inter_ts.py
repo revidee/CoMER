@@ -75,7 +75,8 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         if temperature is None:
             temperature = self.current_temperature.item()
         hp = dict(self.hparams)
-        del hp["temperature"]
+        if "temperature" in hp:
+            del hp["temperature"]
         return self.comer_model.new_beam_search(
             img, mask, **hp, scoring_run=True, bi_dir=True,
             save_logits=save_logits, debug=debug, temperature=temperature

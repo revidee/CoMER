@@ -58,8 +58,10 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
         if temperature is None:
             temperature = self.current_temperature.item()
         hp = dict(self.hparams)
-        del hp["temperature"]
-        del hp["logit_norm_temp"]
+        if "temperature" in hp:
+            del hp["temperature"]
+        if "logit_norm_temp" in hp:
+            del hp["logit_norm_temp"]
         return self.comer_model.new_beam_search(
             img, mask, **hp, scoring_run=True, bi_dir=True,
             save_logits=save_logits, debug=debug, temperature=temperature

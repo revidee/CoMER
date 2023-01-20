@@ -9,7 +9,7 @@ from einops.einops import repeat
 from torch import FloatTensor, LongTensor
 
 from comer.datamodules.crohme import vocab, vocab_size
-from comer.utils.beam_search import BatchedBeamSearch
+from comer.utils.beam_search import BatchedBeamSearch, invalid_score
 from comer.utils.original_beam_search import BeamSearchScorer
 from comer.utils.utils import Hypothesis, ce_loss, to_tgt_output
 
@@ -419,6 +419,17 @@ class DecodeModel(pl.LightningModule):
         -------
         List[Hypothesis]: [batch_size,]
         """
+        GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS = [
+            (30, 0.3),
+            (60, 0.1),
+        ]
+
+        global_pruning_threshold = invalid_score
+        for (epoch, threshold) in GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS:
+            if self.current_epoch <= epoch:
+                global_pruning_threshold = threshold
+                break
+
         beamsearch = BatchedBeamSearch(
             beam_size,
             self.device,
@@ -428,7 +439,8 @@ class DecodeModel(pl.LightningModule):
             find_top_k=beam_size * 2,
             debug=debug,
             save_logits=save_logits,
-            logit_norm_temp=logit_norm_temp
+            logit_norm_temp=logit_norm_temp,
+            min_normalized_pseudo_probabilty=global_pruning_threshold
         )
         if save_logits:
             hyps_l2r, history_l2r, scores_l2r, repeats_l2r, raw_logits_l2r, \

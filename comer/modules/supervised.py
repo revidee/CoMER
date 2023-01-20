@@ -140,7 +140,8 @@ class CoMERSupervised(pl.LightningModule):
         if temperature is None:
             temperature = 1
         hp = dict(self.hparams)
-        del hp["temperature"]
+        if "temperature" in hp:
+            del hp["temperature"]
         if use_new:
             return self.comer_model.new_beam_search(img, mask, **hp, scoring_run=True, bi_dir=True, save_logits=save_logits, debug=debug, temperature=temperature)
         return self.comer_model.beam_search(img, mask, **hp, scoring_run=True, bi_dir=True, debug=debug)
@@ -149,7 +150,7 @@ class CoMERSupervised(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = optim.SGD(
             self.parameters(),
-            lr=self.hparams.learning_rate,
+            lr=self.hparams.learning_rate * math.sqrt(self.trainer.world_size),
             momentum=0.9,
             weight_decay=1e-4,
         )
@@ -160,14 +161,17 @@ class CoMERSupervised(pl.LightningModule):
         #     factor=0.25,
         #     patience=self.hparams.patience // self.trainer.check_val_every_n_epoch,
         # )
-        # self.hparams.learning_rate_target
         gamma = math.exp(math.log(self.hparams.learning_rate_target/self.hparams.learning_rate) / self.hparams.steplr_steps)
         step_size = int(math.ceil(self.trainer.max_epochs / (self.hparams.steplr_steps + 1)))
         step_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=step_size, gamma=gamma)
+
         scheduler = {
             "scheduler": step_scheduler,
+            # "monitor": self.hparams.monitor,
             "interval": "epoch",
-            "frequency": 1
+            # "frequency": self.trainer.check_val_every_n_epoch,
+            "frequency": 1,
+            "strict": True,
         }
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}

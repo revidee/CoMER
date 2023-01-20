@@ -42,7 +42,7 @@ if __name__ == '__main__':
         # Training (Supervised Tuning)
         learning_rate=0.00125,
         learning_rate_target=8e-5,
-        steplr_steps=40,
+        steplr_steps=5,
         # Self-Training Params
         pseudo_labeling_threshold=0.985
     )

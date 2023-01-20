@@ -52,7 +52,7 @@ fit:
       # training
       learning_rate: 0.08,
       learning_rate_target: 8e-5,
-      steplr_steps: 50
+      steplr_steps: 8
       # self-training
       pseudo_labeling_threshold: 0.95
   data:
