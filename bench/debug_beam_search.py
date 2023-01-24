@@ -4,6 +4,7 @@ import os
 from typing import Dict, Tuple, List, Callable, Union
 from zipfile import ZipFile
 
+import matplotlib
 import numpy as np
 import sklearn.metrics as metrics
 import torch
@@ -107,35 +108,41 @@ def main(gpu: int = -1):
 
             hyps = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
 
-            precisions, recalls, auc = average_precision(
+
+            calc_tp_as_all_correct = False
+
+            precisions, recalls, auc, skips, total = average_precision(
                 hyps,
-                score_bimin,
+                score_bi_avg,
                 oracle,
-                None
+                None,
+                calc_tp_as_all_correct=calc_tp_as_all_correct,
             )
-            visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
-            visual.plot(ax=axes, name="Original", color='red')
+            visual = metrics.PrecisionRecallDisplay(precisions, recalls)
+            visual.plot(ax=axes, name=f"BIAVG AP={auc*100:.2f}", color="black")
 
-            precisions, recalls, auc = average_precision(
-                hyps,
-                score_bimin,
-                oracle,
-                1.0,
-                True
-            )
-            visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
-            visual.plot(ax=axes, name="Oracle", color='lime')
 
-            for fac in [0.1, 0.25, 1.0, 5.0]:
-                precisions, recalls, auc = average_precision(
-                    hyps,
-                    score_bimin,
-                    oracle,
-                    fac
-                )
-                visual = metrics.PrecisionRecallDisplay(precisions, recalls, average_precision=auc)
-                visual.plot(ax=axes, name=f"Partial std_fac={fac}")
-
+            for (name, fn, partial_mode, threshold, colormap) in [
+                ("BIAVG", score_bi_avg, 0, 0.35, matplotlib.colormaps['Reds']),
+                ("BIAVG", score_bi_avg, 1, 0.35, matplotlib.colormaps['Blues']),
+                # ("BIAVG", score_bi_avg, 0, 0.6, matplotlib.colormaps['Greens']),
+                # ("BIMIN", score_bimin, 0, 0.6, matplotlib.colormaps['Blues']),
+            ]:
+                # threshold = np.log(threshold)
+                color_range = (0.8, 0.2)
+                facs = [5, 3.5, 2.0, 1.5]
+                for fac_i, fac in enumerate(facs):
+                    precisions, recalls, auc, skips, total = average_precision(
+                        hyps,
+                        fn,
+                        oracle,
+                        fac,
+                        calc_tp_as_all_correct=calc_tp_as_all_correct,
+                        partial_mode=partial_mode,
+                        partial_threshold=threshold
+                    )
+                    visual = metrics.PrecisionRecallDisplay(precisions, recalls)
+                    visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
             plt.show()
 
             # hyps: Dict[str, Hypothesis] = torch.load("../hyps_s_35_new_original_ts_ece.pt",
@@ -785,9 +792,37 @@ def full(batch: Batch, model, shapes, use_new: bool = False):
 def gauss_sum(n):
     return n * (n + 1) / 2
 
+def masked_mean_var(logits):
+    inputs = np.array(logits)
+    idx = np.argmin(inputs)
 
-def partial_label(hyp: Hypothesis, std_fac: float = 1.0, fname: Union[str, None] = None,
-                  oracle: Union[Oracle, None] = None) -> Tuple[bool, List[int], Union[List[int], None]]:
+    masked = np.ma.array(inputs, mask=False)
+    masked.mask[idx] = True
+
+    m = masked.mean()
+    power = np.dot(masked, masked) / masked.size
+    var = power - m ** 2
+    return m, var, idx, masked
+
+def get_best_l2r_data(hyp: Hypothesis):
+    if hyp.was_l2r:
+        return hyp.seq, hyp.history, hyp.best_rev
+    else:
+        best_idx = np.argmax(np.array(hyp.all_l2r_scores))
+        return hyp.all_l2r_hyps[best_idx], hyp.all_l2r_history[best_idx], hyp.all_l2r_rev_scores[best_idx]
+
+def get_best_r2l_data(hyp: Hypothesis):
+    if not hyp.was_l2r:
+        return hyp.seq, hyp.history, hyp.best_rev
+    else:
+        best_idx = np.argmax(np.array(hyp.all_r2l_scores))
+        return hyp.all_r2l_hyps[best_idx], hyp.all_r2l_history[best_idx], hyp.all_r2l_rev_scores[best_idx]
+
+def partial_label(hyp: Hypothesis,
+                  std_fac: float = 1.0,
+                  fname: Union[str, None] = None,
+                  oracle: Union[Oracle, None] = None,
+                  partial_mode = 0) -> Tuple[bool, List[int], Union[List[int], None]]:
     if oracle is not None and fname is not None:
         label = oracle.get_gt_indices(fname)
         if label == hyp.seq:
@@ -810,23 +845,162 @@ def partial_label(hyp: Hypothesis, std_fac: float = 1.0, fname: Union[str, None]
         return True, l2r_seq, r2l_seq
     if len(hyp.seq) < 2:
         return False, hyp.seq, None
-    avgs = np.array([(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))])
-    idx = np.argmin(avgs)
+    # hyp_len = len(hyp.seq)
+    # logits = np.array(hyp.history)
+    # l2r_means = np.cumsum() / (np.arange(1, hyp_len + 1))
+    #
+    # power = np.dot(logits, logits) / logits.size
+    # var = power - l2r_means[-1] ** 2
+    # std = np.sqrt(var)
+    # for i in range(hyp_len):
+    #     if
 
-    masked_avgs = np.ma.array(avgs, mask=False)
-    masked_avgs.mask[idx] = True
+    if partial_mode == 0:
+        # find the smallest logit, if it is farther than X*std from the mean of the rest, use left/right side of the idx
+        # as partial hyps
+        avgs = np.array([(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))])
+        idx = np.argmin(avgs)
+        masked_avgs = np.ma.array(avgs, mask=False)
+        masked_avgs.mask[idx] = True
 
-    m = masked_avgs.mean()
-    power = np.dot(masked_avgs, masked_avgs) / masked_avgs.size
-    var = power - m ** 2
-    std = np.sqrt(var)
+        m = masked_avgs.mean()
+        power = np.dot(masked_avgs, masked_avgs) / masked_avgs.size
+        var = power - m ** 2
+        std = np.sqrt(var)
+        min_dev = m - avgs[idx]
+        if min_dev >= (std * std_fac):
+            # mask it and use l2r / r2l from there
+            return True, hyp.seq[:idx], hyp.seq[idx + 1:]
+        return False, hyp.seq, None
+    elif partial_mode == 1:
+        # Check the worst 2 logits, if they are farther than X*std from the mean of the remaining logits
+        # use lower/upper indices to cap l2r/r2l hyps
+        np_hist = np.array(hyp.history)
+        np_rev = np.array(hyp.best_rev)
+        avgs = (np_hist + np_rev) / 2
+        m, var, idx, masked = masked_mean_var(avgs)
+        std = np.sqrt(var)
 
-    min_dev = m - avgs[idx]
+        min_dev = m - avgs[idx]
 
-    if min_dev >= (std * std_fac):
-        # mask it and use l2r / r2l from there
-        return True, hyp.seq[:idx], hyp.seq[idx + 1:]
-    return False, hyp.seq, None
+        if min_dev >= (std * std_fac):
+            if len(hyp.seq) < 3:
+                return True, hyp.seq[:idx], hyp.seq[idx + 1:]
+            second_smallest = masked.argmin(fill_value=1.0)
+            masked.mask[second_smallest] = True
+
+            m = masked.mean()
+            power = np.dot(masked, masked) / masked.size
+            var = power - m ** 2
+            std = np.sqrt(var)
+
+            second_min_dev = m - avgs[idx]
+            if second_min_dev >= (std * std_fac):
+                bottom_idx, top_idx = min((idx, second_smallest)), max((idx, second_smallest))
+                return True, hyp.seq[:bottom_idx], hyp.seq[top_idx + 1:]
+            # std = np.sqrt(var)
+
+            # mask it and use l2r / r2l from there
+            return True, hyp.seq[:idx], hyp.seq[idx + 1:]
+        return False, hyp.seq, None
+    elif partial_mode == 2:
+        # use the best l2r hyp for the l2r-partial
+        # and the best r2l hyp for the r2l-partial
+        # performs worse, since not the "best" hyp is taken each time
+        l2r_hyp, l2r_hist, l2r_rev = get_best_l2r_data(hyp)
+        l2r = l2r_hyp
+
+        if len(l2r_hyp) > 1:
+            m, var, idx, _ = masked_mean_var(l2r_hist)
+            std = np.sqrt(var)
+            min_dev = m - l2r_hist[idx]
+            if min_dev >= (std * std_fac):
+                l2r = l2r_hyp[:idx]
+
+
+        r2l_hyp, r2l_hist, r2l_rev = get_best_r2l_data(hyp)
+        r2l = r2l_hyp
+
+        if len(r2l_hyp) > 1:
+            m, var, idx, _ = masked_mean_var(r2l_hist)
+            std = np.sqrt(var)
+            min_dev = m - r2l_hist[idx]
+            if min_dev >= (std * std_fac):
+                r2l = r2l_hyp[idx + 1:]
+
+        return True, l2r, r2l
+    elif partial_mode == 3:
+        # use the best hyp, but only use the l2r logit history to partial the l2r hyp
+        # and the r2l logit history to partial the r2l hyp
+        l2r = hyp.seq
+        r2l = hyp.seq
+
+        if hyp.was_l2r:
+            m, var, idx, _ = masked_mean_var(hyp.history)
+            std = np.sqrt(var)
+            min_dev = m - hyp.history[idx]
+            if min_dev >= (std * std_fac):
+                l2r = hyp.seq[:idx]
+
+            m, var, idx, _ = masked_mean_var(hyp.best_rev)
+            std = np.sqrt(var)
+            min_dev = m - hyp.best_rev[idx]
+            if min_dev >= (std * std_fac):
+                r2l = hyp.seq[idx+1:]
+        else:
+            m, var, idx, _ = masked_mean_var(hyp.best_rev)
+            std = np.sqrt(var)
+            min_dev = m - hyp.best_rev[idx]
+            if min_dev >= (std * std_fac):
+                l2r = hyp.seq[:idx]
+
+            m, var, idx, _ = masked_mean_var(hyp.history)
+            std = np.sqrt(var)
+            min_dev = m - hyp.history[idx]
+            if min_dev >= (std * std_fac):
+                r2l = hyp.seq[idx+1:]
+
+        return True, l2r, r2l
+    elif partial_mode == 4:
+        # use a weighted average between l2r/r2l logits when searching for the minimum
+        # and the r2l logit history to partial the r2l hyp
+        l2r = hyp.seq
+        r2l = hyp.seq
+        np_hist = np.array(hyp.history)
+        np_rev = np.array(hyp.best_rev)
+
+        w = 3
+
+        if hyp.was_l2r:
+            weighted_avgs = (w*np_hist + np_rev) / (w+1)
+            m, var, idx, _ = masked_mean_var(weighted_avgs)
+            std = np.sqrt(var)
+            min_dev = m - weighted_avgs[idx]
+            if min_dev >= (std * std_fac):
+                l2r = hyp.seq[:idx]
+
+            weighted_avgs = (np_hist + w * np_rev) / (w+1)
+            m, var, idx, _ = masked_mean_var(weighted_avgs)
+            std = np.sqrt(var)
+            min_dev = m - weighted_avgs[idx]
+            if min_dev >= (std * std_fac):
+                r2l = hyp.seq[idx+1:]
+        else:
+            weighted_avgs = (np_hist + w * np_rev) / (w+1)
+            m, var, idx, _ = masked_mean_var(weighted_avgs)
+            std = np.sqrt(var)
+            min_dev = m - weighted_avgs[idx]
+            if min_dev >= (std * std_fac):
+                l2r = hyp.seq[:idx]
+
+            weighted_avgs = (w*np_hist + np_rev) / (w+1)
+            m, var, idx, _ = masked_mean_var(weighted_avgs)
+            std = np.sqrt(var)
+            min_dev = m - weighted_avgs[idx]
+            if min_dev >= (std * std_fac):
+                r2l = hyp.seq[idx+1:]
+
+        return True, l2r, r2l
 
 
 def eval_sorting_score(oracle: Oracle, partial: bool = False, partial_std_fac: float = 1.0, use_oracle: bool = False):
@@ -857,7 +1031,8 @@ def eval_sorting_score(oracle: Oracle, partial: bool = False, partial_std_fac: f
 
 
 def sorting_score(hyps, scoring_fn, oracle, partial: bool = False,
-                  partial_std_fac: float = 1.0, use_oracle: bool = False
+                  partial_std_fac: float = 1.0, use_oracle: bool = False,
+                  partial_threshold: float = float('Inf')
                   ):
     splitted_fnames = []
     splitted_hyps: List[Tuple[bool, List[int], Union[List[int], None]]] = []
@@ -865,12 +1040,13 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False,
 
     for (fname, hyp) in hyps.items():
         splitted_fnames.append(fname)
-        if partial:
+        score = scoring_fn(hyp)
+        if partial and score < partial_threshold:
             splitted_hyps.append(
                 partial_label(hyp, partial_std_fac, fname if use_oracle else None, oracle if use_oracle else None))
         else:
             splitted_hyps.append((False, hyp.seq, None))
-        splitted_scores.append(scoring_fn(hyp))
+        splitted_scores.append(score)
 
     splitted_scores = np.array(splitted_scores)
     splitted_scores_sorted = np.argsort(splitted_scores)[::-1]
@@ -919,7 +1095,11 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False,
     return zero_safe_division(bc_score - wrong_idx_sum, bc_score - wc_score) * 100
 
 
-def average_precision(hyps, scoring_fn, oracle, partial_std_fac: Union[float, None] = None, use_oracle: bool = False
+def average_precision(hyps, scoring_fn, oracle,
+                      partial_std_fac: Union[float, None] = None, use_oracle: bool = False,
+                      partial_mode = 0,
+                      calc_tp_as_all_correct: bool = True,
+                      partial_threshold: float = 1.0
                       ):
     do_partial = partial_std_fac is not None
     partial_bidir = 2 if do_partial else 1
@@ -930,24 +1110,41 @@ def average_precision(hyps, scoring_fn, oracle, partial_std_fac: Union[float, No
 
     for (fname, hyp) in hyps.items():
         splitted_fnames.append(fname)
-        if do_partial:
-            splitted_hyps.append(
-                partial_label(hyp, partial_std_fac, fname if use_oracle else None, oracle if use_oracle else None))
-        else:
-            splitted_hyps.append((False, hyp.seq, None))
-        splitted_scores.append(scoring_fn(hyp))
+        score = scoring_fn(hyp)
+        splitted_scores.append(score)
 
     splitted_scores = np.array(splitted_scores)
     splitted_scores_sorted = np.argsort(splitted_scores)[::-1]
+    threshold = splitted_scores[
+        splitted_scores_sorted[
+            int(math.floor((len(splitted_scores) - 1) * partial_threshold))
+        ]
+    ]
 
-    calc_tp_as_all_correct = True
+    for (fname, hyp) in hyps.items():
+        score = scoring_fn(hyp)
+        if do_partial and score < threshold:
+            exp_score = np.exp(score)
+            splitted_hyps.append(
+                partial_label(
+                    hyp, partial_std_fac * (exp_score ** 2),
+                    fname if use_oracle else None,
+                    oracle if use_oracle else None,
+                    partial_mode
+                )
+            )
+        else:
+            splitted_hyps.append((False, hyp.seq, None))
+
+
+
 
     if calc_tp_as_all_correct:
         cumulative_tp = 0
         for best_i, idx in enumerate(splitted_scores_sorted):
             hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
             fname: str = splitted_fnames[idx]
-            if do_partial and hyp[0]:
+            if do_partial and hyp[0] and splitted_scores[idx] < threshold:
                 l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
                 label = oracle.get_gt_indices(fname)
                 if l2r_len:
@@ -966,28 +1163,38 @@ def average_precision(hyps, scoring_fn, oracle, partial_std_fac: Union[float, No
     precisions = []
     recalls = []
 
+    skipped_tokens = 0
+    total_tokens = 0
+
     for best_i, idx in enumerate(splitted_scores_sorted):
         hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
         fname: str = splitted_fnames[idx]
-        if do_partial and hyp[0]:
+        ori_hyp = hyps[fname].seq
+        if do_partial and hyp[0] and splitted_scores[idx] < threshold:
             l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
             label = oracle.get_gt_indices(fname)
 
             if l2r_len:
+                total_tokens += len(ori_hyp)
+                skipped_tokens += len(ori_hyp) - l2r_len
                 if label[:l2r_len] == hyp[1]:
                     cumulative_tp += 1
                 else:
                     cumulative_fp += 1
 
             if r2l_len:
+                total_tokens += len(ori_hyp)
+                skipped_tokens += len(ori_hyp) - r2l_len
                 if label[-r2l_len:] == hyp[2]:
                     cumulative_tp += 1
                 else:
                     cumulative_fp += 1
         elif oracle.get_gt_indices(fname) == hyp[1]:
             cumulative_tp += partial_bidir
+            total_tokens += 2*len(ori_hyp)
         else:
             cumulative_fp += partial_bidir
+            total_tokens += 2*len(ori_hyp)
 
         precision = cumulative_tp / (cumulative_tp + cumulative_fp)
         recall = cumulative_tp / total_tp
@@ -997,7 +1204,7 @@ def average_precision(hyps, scoring_fn, oracle, partial_std_fac: Union[float, No
 
     precisions = np.array(precisions)
     recalls = np.array(recalls)
-    return precisions, recalls, metrics.auc(recalls, precisions)
+    return precisions, recalls, metrics.auc(recalls, precisions), skipped_tokens, total_tokens
 
 
 def rate_threshold(hyps: Dict[str, Hypothesis],
