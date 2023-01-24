@@ -78,6 +78,7 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
         tgt, out = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 
+        self.logit_temp = self.logit_temp.to(self.device)
         loss = ce_logitnorm_loss(out_hat, out, self.logit_temp)
         self.log(
             "val_loss",
