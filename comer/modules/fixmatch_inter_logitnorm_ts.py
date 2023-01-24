@@ -1,7 +1,7 @@
-from typing import List
+from typing import List, Tuple
 
 import torch
-from torch import FloatTensor, LongTensor
+from torch import FloatTensor, LongTensor, Tensor
 
 from comer.datamodules.crohme import Batch
 from comer.modules import CoMERFixMatchInterleavedTemperatureScaling
@@ -71,3 +71,38 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
         # self.logit_temp = self.logit_temp.to(self.device)
         # return out_hat / (self.logit_temp * (LA.vector_norm(out_hat, dim=-1, keepdim=True) + 1e-7))
         return out_hat
+
+    def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0) -> Tuple[
+        Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]
+    ]:
+        tgt, out = to_bi_tgt_out(batch.labels, self.device)
+        out_hat = self(batch.imgs, batch.mask, tgt)
+
+        loss = ce_logitnorm_loss(out_hat, out, self.logit_temp)
+        self.log(
+            "val_loss",
+            loss,
+            on_step=False,
+            on_epoch=True,
+            prog_bar=True,
+            sync_dist=True,
+            batch_size=batch.imgs.shape[0]
+        )
+
+        hyps = self.approximate_joint_search(batch.imgs, batch.mask, save_logits=True)
+
+        self.exprate_recorder([h.seq for h in hyps], batch.labels)
+        self.log(
+            "val_ExpRate",
+            self.exprate_recorder,
+            prog_bar=True,
+            on_step=False,
+            on_epoch=True,
+            batch_size=batch.imgs.shape[0]
+        )
+
+        return (
+            loss,
+            # TODO: finally abstract the hyp conf score function away
+            (out, out_hat, [h.score / 2 for h in hyps], [h.seq for h in hyps], batch.labels)
+        )
