@@ -9,6 +9,7 @@ from comer.datamodules.crohme import Batch, vocab
 import torch.distributed as dist
 
 from comer.modules import CoMERFixMatchInterleavedTemperatureScaling
+from comer.utils.conf_measures import score_bimin
 
 
 class CoMERFixMatchInterleavedFixedPctTemperatureScaling(CoMERFixMatchInterleavedTemperatureScaling):
@@ -48,7 +49,7 @@ class CoMERFixMatchInterleavedFixedPctTemperatureScaling(CoMERFixMatchInterleave
                 # By dividing with 2, we average between these to get a kind-of log-likelihood again.
                 pseudo_labels.extend(
                     [
-                        (vocab.indices2words(h.seq), (h.score / 2)) if (len(h.history) > 0)
+                        (vocab.indices2words(h.seq), score_bimin(h)) if (len(h.history) > 0)
                             else ([], invalid_score) for h in self.approximate_joint_search(batch.imgs, batch.mask)]
                 )
 
@@ -66,12 +67,17 @@ class CoMERFixMatchInterleavedFixedPctTemperatureScaling(CoMERFixMatchInterleave
         # update the gpu-local trainer-cache
         hyps = []
         scores = []
+        merged_labels = {}
         for single_gpu_labels in all_gpu_labels:
             if single_gpu_labels is None:
                 continue
             for fname, (label, score) in single_gpu_labels:
-                hyps.append((fname, label))
-                scores.append(score)
+                if len(label) > 0:
+                    merged_labels[fname] = (label, score)
+
+        for fname, (label, score) in merged_labels.items():
+            hyps.append((fname, label))
+            scores.append(score)
         indices = torch.argsort(torch.tensor(scores, device=self.device), descending=True)
         if not self.keep_old_preds:
             for fname in self.trainer.unlabeled_pseudo_labels.keys():

@@ -9,7 +9,14 @@ from comer.modules import CoMERSupervised, CoMERFixMatchInterleavedLogitNormTemp
 from pytorch_lightning import Trainer, seed_everything
 
 
+class CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams(CoMERFixMatchInterleavedTemperatureScaling):
 
+    def __init__(self,
+                 temperature: float,
+                 patience: float,
+                 monitor: str = "test",
+                 **kwargs):
+        super().__init__(**kwargs)
 
 def main(
     cp: str,
@@ -26,7 +33,12 @@ def main(
 
     device = torch.device(f'cuda:{gpu}')
 
-    model = CoMERFixMatchInterleavedTemperatureScaling.load_from_checkpoint(cp, test_suffix=f"{gpu}").to(device).eval()
+    model = CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams.load_from_checkpoint(
+        cp,
+        test_suffix=f"{gpu}",
+        learning_rate_target=0.0001,
+        steplr_steps=10
+    ).to(device).eval()
 
     trainer.test(model, datamodule=dm)
 

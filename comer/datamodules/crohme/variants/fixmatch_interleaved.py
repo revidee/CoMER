@@ -4,6 +4,7 @@ from zipfile import ZipFile
 import numpy as np
 from torch.utils.data.dataloader import DataLoader
 
+from comer.datamodules.oracle import Oracle
 from comer.datamodules.crohme import build_dataset, extract_data_entries, get_splitted_indices, \
     build_batches_from_samples, DataEntry, build_interleaved_batches_from_samples
 from comer.datamodules.crohme.dataset import CROHMEDataset
@@ -40,6 +41,9 @@ class CROHMEFixMatchInterleavedDatamodule(CROHMEFixMatchDatamodule):
                 self.trainer.unlabeled_pseudo_labels = {}
                 for entry in self.unlabeled_data:
                     self.trainer.unlabeled_pseudo_labels[entry.file_name] = []
+
+                # init oracle
+                self.trainer.oracle = Oracle(self.unlabeled_data)
 
                 self.val_dataset = CROHMEDataset(
                     build_dataset(archive, self.val_year, self.eval_batch_size)[0],

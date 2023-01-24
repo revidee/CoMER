@@ -22,7 +22,7 @@ fit:
 #    accelerator: 'cpu'
     # fast_dev_run: True
     accelerator: 'gpu'
-    devices: 3,4
+    devices: 2,3
     sync_batchnorm: true
     strategy:
       class_path: pytorch_lightning.strategies.ddp.DDPStrategy
@@ -32,7 +32,7 @@ fit:
     max_epochs: 600
     deterministic: true
   model:
-    class_path: comer.modules.CoMERSupervised
+    class_path: comer.modules.CoMERFixMatchInterleavedTemperatureScaling
     init_args:
       d_model: 256
       # encoder
@@ -52,9 +52,11 @@ fit:
       alpha: 1.0
       early_stopping: false
       # training
-      learning_rate: 0.08,
-      learning_rate_target: 8e-5,
-      steplr_steps: 12
+      learning_rate: 0.08
+      learning_rate_target: 8e-5
+      steplr_steps: 10
+      pseudo_labeling_threshold: 1.0
+      lambda_u: 1.0
   data:
     class_path: comer.datamodules.CROHMESupvervisedDatamodule
     init_args:

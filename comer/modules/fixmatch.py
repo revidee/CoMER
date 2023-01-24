@@ -9,7 +9,7 @@ from comer.datamodules.crohme import Batch, vocab
 from comer.modules import CoMERSelfTraining
 from comer.utils.conf_measures import th_fn_bimin
 from comer.utils.utils import (ce_loss,
-                               to_bi_tgt_out)
+                               to_bi_tgt_out, ExpRateRecorder)
 import torch.distributed as dist
 
 
@@ -22,6 +22,8 @@ class CoMERFixMatch(CoMERSelfTraining):
     ):
         super().__init__(**kwargs)
         self.save_hyperparameters()
+        self.unlabeled_exprate_recorder = ExpRateRecorder()
+        self.unlabeled_threshold_passing_exprate_recorder = ExpRateRecorder()
 
     def training_step(self, batches: Dict[str, Batch], _):
         tgt, out = to_bi_tgt_out(batches["labeled"].labels, self.device)
@@ -87,11 +89,25 @@ class CoMERFixMatch(CoMERSelfTraining):
                 # h.score is re-weighted by a final scoring run,
                 # adding the loss of a reversed target sequence to the normalized log-likelihood of the beam search.
                 # By dividing with 2, we average between these to get a kind-of log-likelihood again.
-                pseudo_labels.extend(
-                    [
-                        vocab.indices2words(h.seq) if th_fn_bimin(h, self.pseudo_labeling_threshold)
-                        else [] for h in self.approximate_joint_search(batch.imgs, batch.mask)]
-                )
+                if "oracle" not in self.trainer:
+                    hyps_to_extend = [
+                            vocab.indices2words(h.seq) if th_fn_bimin(h, self.pseudo_labeling_threshold)
+                            else [] for h in self.approximate_joint_search(batch.imgs, batch.mask)
+                    ]
+                else:
+                    hyps_to_extend = []
+                    hyps = self.approximate_joint_search(batch.imgs, batch.mask)
+
+                    for idx, h in enumerate(hyps):
+                        label = batch.img_bases[idx]
+                        self.unlabeled_exprate_recorder.update([h.seq], [label])
+                        if th_fn_bimin(h, self.pseudo_labeling_threshold):
+                            hyps_to_extend.append(vocab.indices2words(h.seq))
+                            self.unlabeled_threshold_passing_exprate_recorder.update([h.seq], [label])
+                        else:
+                            hyps_to_extend.append([])
+
+                pseudo_labels.extend(hyps_to_extend)
 
                 end_batch(batch, batch_idx)
         return zip(fnames, pseudo_labels)
@@ -127,6 +143,16 @@ class CoMERFixMatch(CoMERSelfTraining):
             tb_logger.add_scalar(
                 "passed_pseudo_labels_in_epoch",
                 total_passed_this_step,
+                self.current_epoch
+            )
+            tb_logger.add_scalar(
+                "exprate_pseudo_labels",
+                self.unlabeled_exprate_recorder.compute().item(),
+                self.current_epoch
+            )
+            tb_logger.add_scalar(
+                "exprate_passed_pseudo_labels",
+                self.unlabeled_threshold_passing_exprate_recorder.compute().item(),
                 self.current_epoch
             )
             print(f"passed-epoch: {total_passed_this_step}, total: {total_passed}")

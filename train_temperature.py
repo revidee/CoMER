@@ -13,6 +13,14 @@ from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabel
 from comer.modules import CoMERFixMatchInterleavedFixedPctLogitNormTempScale, CoMERFixMatchInterleavedTemperatureScaling
 from comer.modules.fixmatch_inter_logitnorm_ts import CoMERFixMatchInterleavedLogitNormTempScale
 
+class CoMERFixMatchInterleavedTemperatureScalingWithAdditionHyperParams(CoMERFixMatchInterleavedTemperatureScaling):
+    def __init__(self,
+                 temperature: float,
+                 patience: float,
+                 # monitor: str,
+                 **kwargs):
+        super().__init__(**kwargs)
+
 if __name__ == '__main__':
 
 
@@ -21,12 +29,13 @@ if __name__ == '__main__':
         # ("./lightning_logs/version_64/checkpoints/epoch=177-step=46814-val_ExpRate=0.5079.ckpt"),
         # ("./lightning_logs/version_70/checkpoints/epoch=209-step=55230-val_ExpRate=0.5254.ckpt"),
         # ("./lightning_logs/version_65/checkpoints/epoch=239-step=63120-val_ExpRate=0.5463.ckpt"),
-        ("./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt"),
-        ("./lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt"),
+        # ("./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt"),
+        # ("./lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt"),
         # ("./lightning_logs/version_67/checkpoints/epoch=211-step=55756-val_ExpRate=0.5146.ckpt"),
         # ("./lightning_logs/version_68/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt"),
         # ("./lightning_logs/version_71/checkpoints/epoch=197-step=52074-val_ExpRate=0.5321.ckpt"),
         # ("./lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt"),
+        ("./lightning_logs/version_21/checkpoints/epoch=289-step=64960-val_ExpRate=0.3628.ckpt"),
     ]
 
     for cp_path in cps:
@@ -34,7 +43,7 @@ if __name__ == '__main__':
         trainer = UnlabeledValidationExtraStepTrainer(
             unlabeled_val_loop=True,
             accelerator='gpu',
-            devices=[0, 1],
+            devices=[2,3],
             strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
             max_epochs=300,
             deterministic=True,
@@ -59,7 +68,7 @@ if __name__ == '__main__':
             zipfile_path='data.zip',
             train_batch_size=8,
             num_workers=5,
-            unlabeled_pct=0.65,
+            unlabeled_pct=0.85,
             train_sorting=1,
             unlabeled_strong_aug="weak",
             unlabeled_weak_aug=""
@@ -70,9 +79,12 @@ if __name__ == '__main__':
             print(f"Checkpoint '{cp_path}' not found, skipping.")
             continue
 
-        model: CoMERFixMatchInterleavedLogitNormTempScale = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint(
+        model: CoMERFixMatchInterleavedTemperatureScalingWithAdditionHyperParams = CoMERFixMatchInterleavedTemperatureScalingWithAdditionHyperParams.load_from_checkpoint(
             cp_path,
             strict=False,
+            # Training
+            learning_rate_target=8e-4,
+            steplr_steps=10,
             # Self-Training
             pseudo_labeling_threshold=0.2,
             lambda_u=1.0,

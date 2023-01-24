@@ -65,12 +65,17 @@ class CoMERFixMatchInterleavedFixedPct(CoMERFixMatchInterleaved):
         # update the gpu-local trainer-cache
         hyps = []
         scores = []
+        merged_labels = {}
         for single_gpu_labels in all_gpu_labels:
             if single_gpu_labels is None:
                 continue
             for fname, (label, score) in single_gpu_labels:
-                hyps.append((fname, label))
-                scores.append(score)
+                if len(label) > 0:
+                    merged_labels[fname] = (label, score)
+
+        for fname, (label, score) in merged_labels.items():
+            hyps.append((fname, label))
+            scores.append(score)
         indices = torch.argsort(torch.tensor(scores, device=self.device), descending=True)
         if not self.keep_old_preds:
             for fname in self.trainer.unlabeled_pseudo_labels.keys():

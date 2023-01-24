@@ -22,7 +22,7 @@ fit:
 #    accelerator: 'cpu'
     # fast_dev_run: True
     accelerator: 'gpu'
-    devices: 5,
+    devices: 4,
     sync_batchnorm: true
     strategy:
       class_path: pytorch_lightning.strategies.ddp.DDPStrategy
@@ -52,8 +52,8 @@ fit:
       alpha: 1.0
       early_stopping: false
       # training
-      learning_rate: 0.08,
-      learning_rate_target: 8e-5,
+      learning_rate: 0.08
+      learning_rate_target: 8e-5
       steplr_steps: 8
       # self-training
       pseudo_labeling_threshold: 1.0
