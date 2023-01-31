@@ -7,6 +7,7 @@ from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoader
 from torch import optim
 
 from comer.datamodules.crohme import Batch, vocab
+from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.lit_extensions import UnlabeledLightningModule
 from comer.modules.supervised import CoMERSupervised
 from comer.utils.utils import (ce_loss,
@@ -25,8 +26,8 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
         self.pseudo_labeling_threshold = np.log(pseudo_labeling_threshold)
 
     def training_step(self, batch: Batch, _):
-        tgt, out = to_bi_tgt_out(batch.labels, self.device)
-        out_hat = self(batch.imgs, batch.mask, tgt)
+        tgt, out, l2r_indices, r2l_indices = to_bi_tgt_out(batch.labels, self.device)
+        out_hat = self(batch.imgs, batch.mask, tgt, l2r_indices, r2l_indices)
 
         loss = ce_loss(out_hat, out)
         self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch.imgs.shape[0])
@@ -60,7 +61,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
                        start_batch: Callable, end_batch: Callable, dataloader_idx: int):
         is_iter_data_fetcher = isinstance(data_fetcher, DataLoaderIterDataFetcher)
         batch_indices: List[int] = []
-        pseudo_labels: List[List[List[str]]] = []
+        pseudo_labels: List[List[MaybePartialLabel]] = []
         batch: Batch
 
         batch_idx = 0
@@ -81,7 +82,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
                 # By dividing with 2, we average between these to get a kind-of log-likelihood again.
                 pseudo_labels.append(
                     [
-                        vocab.indices2words(h.seq) if (h.score / 2) >= self.pseudo_labeling_threshold
+                        (False, vocab.indices2words(h.seq), None) if (h.score / 2) >= self.pseudo_labeling_threshold
                         else [] for h in self.approximate_joint_search(batch.imgs, batch.mask)]
                 )
 
@@ -93,7 +94,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
             print("warn: trainer does not have the pseudo-label state, cannot update pseudo-labels")
             return
 
-        all_gpu_labels: List[Union[None, List[Tuple[int, List[List[str]]]]]] = [None for _ in range(dist.get_world_size())]
+        all_gpu_labels: List[Union[None, List[Tuple[int, List[MaybePartialLabel]]]]] = [None for _ in range(dist.get_world_size())]
         dist.barrier()
         dist.all_gather_object(all_gpu_labels, list(to_gather))
         # update the gpu-local trainer-cache

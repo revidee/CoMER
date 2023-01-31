@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Any, Optional
+from typing import List, Any, Optional, Union
 from zipfile import ZipFile
 
 import numpy as np
@@ -12,7 +12,9 @@ from torchvision.transforms import ToTensor
 class DataEntry:
     file_name: str
     image: Image
-    label: List[str]
+    is_partial: bool
+    label: Union[List[str], None]
+    label_r2l: Union[List[str], None] = None
 
 
 def extract_data_entries(archive: ZipFile, dir_name: str,
@@ -52,7 +54,7 @@ def extract_data_entries(archive: ZipFile, dir_name: str,
             # This is needed to call this method from a CPU context (i.e. when doing CLI inference / benching)
             if to_device is not None:
                 img = ToTensor()(img).to(device=to_device)
-        data.append(DataEntry(file_name, img, label))
+        data.append(DataEntry(file_name, img, False, label, None))
 
     print(f"Extract data from: {dir_name}, with data size: {len(data)}")
 

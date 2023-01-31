@@ -1,6 +1,6 @@
 import math
 from dataclasses import dataclass
-from typing import List, Tuple, Callable, Any
+from typing import List, Tuple, Callable, Any, Union
 from zipfile import ZipFile
 
 import numpy as np
@@ -11,13 +11,15 @@ from torch import FloatTensor, LongTensor
 from .entry import extract_data_entries, DataEntry
 from .vocab import vocab
 
-
+# (is_partial, label_l2r, label_r2l),
+MaybePartialLabel = Tuple[bool, Union[List[str], None], Union[List[str], None]]
+MaybePartialLabelWithIndices = Tuple[bool, Union[List[int], None], Union[List[int], None]]
 @dataclass
 class Batch:
     img_bases: List[str]  # [b,]
     imgs: FloatTensor  # [b, 1, H, W]
     mask: LongTensor  # [b, H, W]
-    labels: List[List[int]]  # [b, l]
+    labels: List[MaybePartialLabelWithIndices]  # [b, l]
     unlabeled_start: int
     src_idx: int
     unfiltered_size: int
@@ -36,14 +38,13 @@ class Batch:
             unfiltered_size=self.unfiltered_size
         )
 
-
 # A BatchTuple represents a single batch which contains 3 lists of equal length (batch-len)
-# [file_names, images, labels, unlabeled_start, src_idx]
-BatchTuple = Tuple[List[str], List['np.ndarray'], List[List[str]], int, int]
+# [file_names, images, labels unlabeled_start, src_idx]
+BatchTuple = Tuple[List[str], List['np.ndarray'], List[MaybePartialLabel], int, int]
 
 
 # Creates a Batch of (potentially) annotated images which pads & masks the images, s.t. they fit into a single tensor.
-def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], labels: List[List[str]], is_labled: bool, src_idx: int, remove_unlabeled: bool = False) -> Batch:
+def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], labels: List[MaybePartialLabel], is_labled: bool, src_idx: int, remove_unlabeled: bool = False) -> Batch:
     assert (len(file_names) == len(images) == len(images))
 
     filtered_images: List['np.ndarray'] = []
@@ -51,13 +52,19 @@ def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], l
 
     filtered_heights_x = []
     filtered_widths_x = []
-    filtered_labels_as_indices = []
+    filtered_labels_as_indices: List[MaybePartialLabelWithIndices] = []
 
     for i, label in enumerate(labels):
-        if not remove_unlabeled or len(label) > 0:
+        if not remove_unlabeled \
+                or (label[1] is not None and len(label[1]) > 0) \
+                or (label[2] is not None and len(label[2]) > 0):
             filtered_im = images[i]
             filtered_images.append(filtered_im)
-            filtered_labels_as_indices.append(vocab.words2indices(label))
+            filtered_labels_as_indices.append((
+                label[0],
+                vocab.words2indices(label[1]) if label[1] is not None else None,
+                vocab.words2indices(label[2]) if label[2] is not None else None
+            ))
             filtered_file_names.append((file_names[i]))
             filtered_heights_x.append(filtered_im.size(1))
             filtered_widths_x.append(filtered_im.size(2))
@@ -146,7 +153,7 @@ def build_batch_split_from_entries(
     )
 
 def build_batches_from_samples(
-        data: 'np.ndarray[Any, np.dtype[DataEntry]]',
+        data: List[DataEntry],
         batch_size: int,
         batch_imagesize: int = MAX_SIZE,
         max_imagesize: int = MAX_SIZE,
@@ -157,11 +164,11 @@ def build_batches_from_samples(
         return list()
     next_batch_file_names: List[str] = []
     next_batch_images: List['np.ndarray'] = []
-    next_batch_labels: List[List[str]] = []
+    next_batch_labels: List[MaybePartialLabel] = []
 
     total_fname_batches: List[List[str]] = []
     total_feature_batches: List[List['np.ndarray']] = []
-    total_label_batches: 'List[List[List[str]]]' = []
+    total_label_batches: List[List[MaybePartialLabel]] = []
     total_unlabeled_start_batches: List[int] = []
 
     biggest_image_size = 0
@@ -216,7 +223,7 @@ def build_batches_from_samples(
             # add the entry to the current batch
             next_batch_file_names.append(entry.file_name)
             next_batch_images.append(image_arr)
-            next_batch_labels.append(entry.label)
+            next_batch_labels.append((entry.is_partial, entry.label, entry.label_r2l))
             i += 1
 
     # add last batch if it isn't empty
@@ -292,14 +299,14 @@ def build_interleaved_batches_from_samples(
             [] if unlabeled_in_batch_len == 0 else unlabeled_sorted[unlabeled_idx:unlabeled_end_idx].tolist()
         )
 
-        splitted_entries: List[Tuple[str, 'np.ndarray', List[str]]] = [
+        splitted_entries: List[Tuple[str, 'np.ndarray', MaybePartialLabel]] = [
                         (
                             entry.file_name,
                             np.array(entry.image) if is_pil_image else entry.image,
-                            entry.label
+                            (entry.is_partial, entry.label, entry.label_r2l)
                         ) for entry in batch_entries
                     ]
-        partial_entries: Tuple[List[str], List['np.ndarray'], List[List[str]]] = list(zip(*splitted_entries))
+        partial_entries: Tuple[List[str], List['np.ndarray'], List[MaybePartialLabel]] = list(zip(*splitted_entries))
         batches.append((
             partial_entries[0],
             partial_entries[1],

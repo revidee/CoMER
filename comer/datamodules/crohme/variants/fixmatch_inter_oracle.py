@@ -1,4 +1,4 @@
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Dict
 from zipfile import ZipFile
 
 from torch.utils.data.dataloader import DataLoader
@@ -6,6 +6,7 @@ from torch.utils.data.dataloader import DataLoader
 from comer.datamodules import CROHMESupvervisedDatamodule, CROHMEFixMatchInterleavedDatamodule, Oracle
 from comer.datamodules.crohme import build_dataset, extract_data_entries, get_splitted_indices, \
     build_batches_from_samples, DataEntry, BatchTuple
+from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.datamodules.crohme.dataset import CROHMEDataset
 from comer.datamodules.crohme.variants.collate import collate_fn, collate_fn_remove_unlabeled
 
@@ -36,9 +37,7 @@ class CROHMEFixMatchOracleDatamodule(CROHMEFixMatchInterleavedDatamodule):
                 self.unlabeled_factor = (1 / (1 - self.unlabeled_pct)) - 1
 
                 # initialize the pseudo-labels with empty labels
-                self.trainer.unlabeled_pseudo_labels = {}
-                for entry in self.unlabeled_data:
-                    self.trainer.unlabeled_pseudo_labels[entry.file_name] = []
+                self.setup_pseudo_label_cache(self.unlabeled_data)
 
                 # init oracle
                 self.trainer.oracle = Oracle(self.unlabeled_data)

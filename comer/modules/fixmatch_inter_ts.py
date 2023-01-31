@@ -25,18 +25,17 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         self.save_hyperparameters()
         self.register_buffer("current_temperature", torch.ones(1) * 1.5, True)
         self.verbose_temp_scale = True
-
-    def training_step(self, batch: Batch, _):
-        # Hack to get a zero-grad (no change) to the current temperature param, which is otherwise not used in training
-        return super().training_step(batch, _)
+        self.temp_scale_only = False
 
     def set_verbose_temp_scale_optim(self, val: bool):
         self.verbose_temp_scale = val
+    def set_temp_scale_only(self, val: bool):
+        self.temp_scale_only = val
 
     def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0) -> Tuple[
         Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]
     ]:
-        tgt, out = to_bi_tgt_out(batch.labels, self.device)
+        tgt, out, _, _ = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 
         loss = ce_loss(out_hat, out)
@@ -52,7 +51,9 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
         hyps = self.approximate_joint_search(batch.imgs, batch.mask, save_logits=True)
 
-        self.exprate_recorder([h.seq for h in hyps], batch.labels)
+        l2r_labels = [label_tuple[1] for label_tuple in batch.labels]
+
+        self.exprate_recorder([h.seq for h in hyps], l2r_labels)
         self.log(
             "val_ExpRate",
             self.exprate_recorder,
@@ -65,7 +66,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         return (
             loss,
             # TODO: finally abstract the hyp conf score function away
-            (out, out_hat, [h.score / 2 for h in hyps], [h.seq for h in hyps], batch.labels)
+            (out, out_hat, [h.score / 2 for h in hyps], [h.seq for h in hyps], l2r_labels)
         )
 
     def approximate_joint_search(
@@ -140,14 +141,18 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
             with torch.enable_grad() and torch.inference_mode(False):
                 optimizer = optim.LBFGS([current_temperature], lr=0.01, max_iter=100)
+
+                prev_temp = self.current_temperature
                 def eval_curr_temp():
                     optimizer.zero_grad()
                     loss = ece_criterion(logits / current_temperature, labels) \
-                           + F.cross_entropy(logits / current_temperature, labels,
+                           + 3 * F.cross_entropy(logits / current_temperature, labels,
                                              ignore_index=vocab.PAD_IDX, reduction="mean")
                     # loss = ce_logitnorm_loss(logits / current_temperature, labels)
                     # loss = F.cross_entropy(logits / current_temperature, labels,
                     #                        ignore_index=vocab.PAD_IDX, reduction="mean")
+                    if not self.temp_scale_only and prev_temp != 1.0:
+                        loss += torch.abs(current_temperature - prev_temp)
                     loss.backward()
                     return loss
 
@@ -162,7 +167,6 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                     print(f'Optimal temperature: {current_temperature.item():.3f}')
                     print(f'After temperature - NLL: {after_temperature_nll:.3f}, ECE: {after_temperature_ece:.3f}')
 
-                self.current_temperature = current_temperature
                 if self.local_rank == 0:
                     tb_logger: SummaryWriter = self.logger.experiment
                     tb_logger.add_scalar(
@@ -170,8 +174,8 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                         current_temperature.item(),
                         self.current_epoch
                     )
-                if self.current_temperature < 1e-4:
-                    self.current_temperature = torch.nn.Parameter(torch.ones(1, device=self.device))
+                if current_temperature >= 1e-4:
+                    self.current_temperature = current_temperature
                 # Find best confidence threshold for pseudo-labeling.
                 # TODO: Move from learnable to heuristic, that's why it's currently disabled
                 # correct_scores: Tensor = torch.tensor(correct_scores, device=self.device, requires_grad=True)

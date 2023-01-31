@@ -1,9 +1,10 @@
-from typing import Optional, Any
+from typing import Optional, Any, Dict, List
 from zipfile import ZipFile
 
 import numpy as np
 from torch.utils.data.dataloader import DataLoader
 
+from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.datamodules.oracle import Oracle
 from comer.datamodules.crohme import build_dataset, extract_data_entries, get_splitted_indices, \
     build_batches_from_samples, DataEntry, build_interleaved_batches_from_samples
@@ -38,9 +39,7 @@ class CROHMEFixMatchInterleavedDatamodule(CROHMEFixMatchDatamodule):
                 self.unlabeled_factor = (1 / (1 - self.unlabeled_pct)) - 1
 
                 # initialize the pseudo-labels with empty labels
-                self.trainer.unlabeled_pseudo_labels = {}
-                for entry in self.unlabeled_data:
-                    self.trainer.unlabeled_pseudo_labels[entry.file_name] = []
+                self.setup_pseudo_label_cache(self.unlabeled_data)
 
                 # init oracle
                 self.trainer.oracle = Oracle(self.unlabeled_data)
@@ -59,11 +58,14 @@ class CROHMEFixMatchInterleavedDatamodule(CROHMEFixMatchDatamodule):
     def get_interleaved_train_batches(self):
         filtered_unlabeled_entries = []
         total_labeled = 0
+        self.unlabeled_data: List[DataEntry]
         for data_entry in self.unlabeled_data:
             # add label from gpu-shared labeling cache
-            data_entry.label = self.trainer.unlabeled_pseudo_labels[data_entry.file_name]
+            data_entry.is_partial, data_entry.label, data_entry.label_r2l\
+                = self.trainer.unlabeled_pseudo_labels[data_entry.file_name]
             # if it has a valid label, add it to the "filtered" data-set
-            if len(data_entry.label) > 0:
+            if (data_entry.label is not None and len(data_entry.label) > 0)\
+                    or (data_entry.label_r2l is not None and len(data_entry.label_r2l) > 0):
                 filtered_unlabeled_entries.append(data_entry)
                 total_labeled += 1
 

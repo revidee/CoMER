@@ -1,7 +1,8 @@
 import itertools
 import math
 import os
-from typing import Dict, Tuple, List, Callable, Union
+from collections import defaultdict
+from typing import Dict, Tuple, List, Callable, Union, Any
 from zipfile import ZipFile
 
 import matplotlib
@@ -17,10 +18,10 @@ from comer.datamodules.crohme import extract_data_entries, vocab
 from comer.datamodules.crohme.batch import build_batches_from_samples, Batch, get_splitted_indices, BatchTuple
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.datamodules.oracle import general_levenshtein
-from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale
+from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale, CoMERSupervised
 from comer.utils import ECELoss
 from comer.utils.conf_measures import th_fn_bimin, score_ori, score_bimin, score_avg, score_rev_avg, score_bisum, \
-    score_bisum_avg, score_bi_avg, score_sum
+    score_bisum_avg, score_bi_avg, score_sum, score_min
 from comer.utils.utils import Hypothesis
 from operator import ne
 from itertools import compress, count
@@ -99,51 +100,84 @@ def main(gpu: int = -1):
             )
             full_data_test: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "2019",
                                                                                           to_device=device)
+            test_batches = build_batches_from_samples(
+                full_data_test,
+                4
+            )
+
+            # generate_hyps(
+            #     [
+            #         (
+            #             "./lightning_logs/version_21/checkpoints/epoch=289-step=64960-val_ExpRate=0.3628.ckpt",
+            #             CoMERSupervised,
+            #             "hyps_s_15_new_original"
+            #         )
+            #     ],
+            #     [
+            #         ('_test', test_batches)
+            #     ],
+            #     device,
+            # )
             oracle = Oracle(full_data)
             oracle.add_data(full_data_test)
 
+            confidence_measure_ap_ece_table(
+                [
+                    torch.load("../hyps_s_100_new_original_test.pt", map_location=torch.device('cpu')),
+                    torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
+                    torch.load("../hyps_s_15_new_original_test.pt", map_location=torch.device('cpu')),
+                ],
+                oracle
+            )
+
             # eval_sorting_score(oracle, True, 1.0, True)
 
-            fig, axes = plt.subplots(1)
+            # fig, axes = plt.subplots(1)
 
-            hyps = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
-
-
-            calc_tp_as_all_correct = False
-
-            precisions, recalls, auc, skips, total = average_precision(
-                hyps,
-                score_bi_avg,
-                oracle,
-                None,
-                calc_tp_as_all_correct=calc_tp_as_all_correct,
-            )
-            visual = metrics.PrecisionRecallDisplay(precisions, recalls)
-            visual.plot(ax=axes, name=f"BIAVG AP={auc*100:.2f}", color="black")
+            # hyps_base = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
+            # hyps_ln = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
 
 
-            for (name, fn, partial_mode, threshold, colormap) in [
-                ("BIAVG", score_bi_avg, 0, 0.35, matplotlib.colormaps['Reds']),
-                ("BIAVG", score_bi_avg, 1, 0.35, matplotlib.colormaps['Blues']),
-                # ("BIAVG", score_bi_avg, 0, 0.6, matplotlib.colormaps['Greens']),
-                # ("BIMIN", score_bimin, 0, 0.6, matplotlib.colormaps['Blues']),
-            ]:
-                # threshold = np.log(threshold)
-                color_range = (0.8, 0.2)
-                facs = [5, 3.5, 2.0, 1.5]
-                for fac_i, fac in enumerate(facs):
-                    precisions, recalls, auc, skips, total = average_precision(
-                        hyps,
-                        fn,
-                        oracle,
-                        fac,
-                        calc_tp_as_all_correct=calc_tp_as_all_correct,
-                        partial_mode=partial_mode,
-                        partial_threshold=threshold
-                    )
-                    visual = metrics.PrecisionRecallDisplay(precisions, recalls)
-                    visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
-            plt.show()
+            # calc_tp_as_all_correct = False
+
+            # BIMIN, 3.5, partial 0
+
+            # for (all_hyps, name, fn, partial_mode, fac, threshold, min_threshold, color) in [
+            #     (hyps_base, "BIMIN", score_bimin, 0, None, 0.0, 0.0, matplotlib.colormaps['Reds'](0.9)),
+            #     (hyps_base, "BIMIN", score_bimin, 0, 3.5, 0.65, 0.15, matplotlib.colormaps['Reds'](0.7)),
+            #     (hyps_base, "BIMIN", score_bimin, 5, 3.5, 0.65, 0.15, matplotlib.colormaps['Reds'](0.6)),
+            #     (hyps_base, "BIMIN", score_bimin, 6, 3.5, 0.65, 0.15, matplotlib.colormaps['Reds'](0.5)),
+            #     (hyps_base, "BIMIN", score_bimin, 7, 3.5, 0.65, 0.15, matplotlib.colormaps['Reds'](0.3)),
+            #     (hyps_ln, "ORI LN", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.9)),
+            #     (hyps_ln, "ORI LN", score_ori, 0, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.7)),
+            #     (hyps_ln, "ORI LN", score_ori, 5, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.6)),
+            #     (hyps_ln, "ORI LN", score_ori, 6, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.5)),
+            #     (hyps_ln, "ORI LN", score_ori, 7, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.3)),
+            #     # ("BIMIN", score_bimin, 3, 0.8, matplotlib.colormaps['Greens']),
+            #     # ("BIAVG", score_bi_avg, 0, 0.6, matplotlib.colormaps['Greens']),
+            #     # ("BIMIN", score_bimin, 0, 0.6, matplotlib.colormaps['Blues']),
+            # ]:
+            #     threshold = (float('-Inf') if threshold == 0.0 else np.log(threshold))
+            #     min_threshold = float('-Inf') if min_threshold == 0.0 else np.log(min_threshold)
+            #     precisions, recalls, auc, skips, total = average_precision(
+            #         all_hyps,
+            #         fn,
+            #         oracle,
+            #         fac,
+            #         calc_tp_as_all_correct=calc_tp_as_all_correct,
+            #         partial_mode=partial_mode,
+            #         partial_threshold=threshold,
+            #         min_threshold=min_threshold
+            #     )
+            #     visual = metrics.PrecisionRecallDisplay(precisions, recalls)
+            #     # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
+            #     visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
+            #
+            # plt.show()
+
+            # hyps_s_35_new_original_1.pt
+
+
 
             # hyps: Dict[str, Hypothesis] = torch.load("../hyps_s_35_new_original_ts_ece.pt",
             #                                              map_location=torch.device('cpu'))
@@ -822,7 +856,8 @@ def partial_label(hyp: Hypothesis,
                   std_fac: float = 1.0,
                   fname: Union[str, None] = None,
                   oracle: Union[Oracle, None] = None,
-                  partial_mode = 0) -> Tuple[bool, List[int], Union[List[int], None]]:
+                  partial_mode = 0,
+                  threshold: float = float('-Inf')) -> Tuple[bool, List[int], Union[List[int], None]]:
     if oracle is not None and fname is not None:
         label = oracle.get_gt_indices(fname)
         if label == hyp.seq:
@@ -1001,6 +1036,40 @@ def partial_label(hyp: Hypothesis,
                 r2l = hyp.seq[idx+1:]
 
         return True, l2r, r2l
+    elif partial_mode == 5:
+        # find the smallest logit, if it is farther than X*std from the mean of the rest, use left/right side of the idx
+        # as partial hyps. Or if the remaining sequence is better than the usual threshold.
+        avgs = np.array([(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))])
+        idx = np.argmin(avgs)
+        masked_avgs = np.ma.array(avgs, mask=False)
+        masked_avgs.mask[idx] = True
+
+        m = masked_avgs.mean()
+        power = np.dot(masked_avgs, masked_avgs) / masked_avgs.size
+        std = np.sqrt(power - m ** 2)
+        min_dev = m - avgs[idx]
+        if m >= threshold or (min_dev >= (std * std_fac)):
+            # mask it and use l2r / r2l from there
+            return True, hyp.seq[:idx], hyp.seq[idx + 1:]
+        return False, [], None
+    elif partial_mode == 6:
+        # find the smallest logit, remaining mean passes the threshold, use left/right side of the idx
+        # as partial hyps
+        avgs = np.array([(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))])
+        idx = np.argmin(avgs)
+        masked_avgs = np.ma.array(avgs, mask=False)
+        masked_avgs.mask[idx] = True
+
+        m = masked_avgs.mean()
+        if m >= threshold:
+            # mask it and use l2r / r2l from there
+            return True, hyp.seq[:idx], hyp.seq[idx + 1:]
+        return False, [], None
+    elif partial_mode == 7:
+        # find the smallest logit, use left/right side of the idx as partial hyps.
+        avgs = np.array([(hyp.history[i] + hyp.best_rev[i]) / 2 for i in range(len(hyp.seq))])
+        idx = np.argmin(avgs)
+        return True, hyp.seq[:idx], hyp.seq[idx + 1:]
 
 
 def eval_sorting_score(oracle: Oracle, partial: bool = False, partial_std_fac: float = 1.0, use_oracle: bool = False):
@@ -1099,7 +1168,8 @@ def average_precision(hyps, scoring_fn, oracle,
                       partial_std_fac: Union[float, None] = None, use_oracle: bool = False,
                       partial_mode = 0,
                       calc_tp_as_all_correct: bool = True,
-                      partial_threshold: float = 1.0
+                      partial_threshold: float = 1.0,
+                      min_threshold: float = float('-Inf')
                       ):
     do_partial = partial_std_fac is not None
     partial_bidir = 2 if do_partial else 1
@@ -1115,22 +1185,24 @@ def average_precision(hyps, scoring_fn, oracle,
 
     splitted_scores = np.array(splitted_scores)
     splitted_scores_sorted = np.argsort(splitted_scores)[::-1]
-    threshold = splitted_scores[
-        splitted_scores_sorted[
-            int(math.floor((len(splitted_scores) - 1) * partial_threshold))
-        ]
-    ]
+    # threshold = splitted_scores[
+    #     splitted_scores_sorted[
+    #         int(math.floor((len(splitted_scores) - 1) * partial_threshold))
+    #     ]
+    # ]
+    threshold = partial_threshold
 
     for (fname, hyp) in hyps.items():
         score = scoring_fn(hyp)
         if do_partial and score < threshold:
-            exp_score = np.exp(score)
+            exp_score = np.exp(score * 2)
             splitted_hyps.append(
                 partial_label(
-                    hyp, partial_std_fac * (exp_score ** 2),
+                    hyp, partial_std_fac * exp_score,
                     fname if use_oracle else None,
                     oracle if use_oracle else None,
-                    partial_mode
+                    partial_mode,
+                    threshold
                 )
             )
         else:
@@ -1142,6 +1214,8 @@ def average_precision(hyps, scoring_fn, oracle,
     if calc_tp_as_all_correct:
         cumulative_tp = 0
         for best_i, idx in enumerate(splitted_scores_sorted):
+            if splitted_scores[idx] < min_threshold:
+                continue
             hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
             fname: str = splitted_fnames[idx]
             if do_partial and hyp[0] and splitted_scores[idx] < threshold:
@@ -1170,6 +1244,8 @@ def average_precision(hyps, scoring_fn, oracle,
         hyp: Tuple[bool, List[int], Union[List[int], None]] = splitted_hyps[idx]
         fname: str = splitted_fnames[idx]
         ori_hyp = hyps[fname].seq
+        if splitted_scores[idx] < min_threshold:
+            continue
         if do_partial and hyp[0] and splitted_scores[idx] < threshold:
             l2r_len, r2l_len = len(hyp[1]), len(hyp[2])
             label = oracle.get_gt_indices(fname)
@@ -1254,6 +1330,107 @@ def eval_confs_by_thresholds(hyps: Dict[str, Hypothesis],
                   f" {incorrect_lev_dist_sum} {incorrect_lev_dist_sum / passed:.2f} ".ljust(11) +
                   f" {zero_safe_division(incorrect_lev_dist_sum, incorrect):.2f}  ".ljust(8), end='')
     print()
+
+
+def confidence_measure_ap_ece_table(hyps_from_cps: List[Dict[str, Hypothesis]], oracle: Oracle):
+    ece = ECELoss()
+
+    def hyp_to_triplet_with_scoring(sfn: Callable[[Hypothesis], float], oracle: Oracle):
+        def hyp_to_triplet(tuple: [str, Hypothesis]):
+            seq_len = len(tuple[1].seq)
+            return np.exp(sfn(tuple[1])) if seq_len else 0.0, tuple[1].seq, oracle.get_gt_indices(tuple[0])
+        return hyp_to_triplet
+
+
+    results = defaultdict(list)
+    scoring_fns = [
+        ("$\\text{ORI}$", score_ori),
+        ("$\\text{AVG}$", score_avg),
+        ("$\\text{BIAVG}$", score_bi_avg),
+        ("$\\text{MIN}$", score_min),
+        ("$\\text{BIMIN}$", score_bimin),
+        ("$\\text{MULT}$", score_sum),
+        ("$\\text{BIMULT}$", score_bisum)
+    ]
+
+    for hyps in hyps_from_cps:
+        for name, sfn in scoring_fns:
+            precisions, recalls, auc, skips, total = average_precision(
+                hyps,
+                sfn,
+                oracle,
+                None,
+                calc_tp_as_all_correct=False
+            )
+            to_triplet = hyp_to_triplet_with_scoring(sfn, oracle)
+            ece_score, acc = ece.ece_for_predictions(map(to_triplet, hyps.items()))
+            results[name].append(ece_score*100)
+            results[name].append(auc*100)
+    stacked = np.vstack(list(results.values()))
+    maxes = np.max(stacked, axis=0)
+    mins = np.min(stacked, axis=0)
+
+    for name, sfn in scoring_fns:
+        conf_results = np.array(results[name])
+        row_string = []
+        for i, value in enumerate(conf_results):
+            compare_val = mins
+            if i % 2:
+                compare_val = maxes
+            if value == compare_val[i]:
+                row_string.append(f"$\\mathbf{{{value:.2f}}}$")
+            else:
+                row_string.append(f"${value:.2f}$")
+
+        print(f"{name} & {' & '.join(row_string)}  \\\\ \\hline")
+
+
+
+def generate_hyps(checkpoints: List[Tuple[str, Any, str]],
+                  datasets_with_suffix: List[Tuple[str, List[BatchTuple]]],
+                  device: torch.device,
+                  temps: List[Union[float, None]] = None,
+                  output_root: str = "./"
+                  ):
+    if temps is None:
+        temps = [None]
+    with torch.inference_mode():
+        for (cp, model_class, name) in checkpoints:
+            model = None
+            torch.cuda.empty_cache()
+            all_hyps = {}
+
+            print(f"Loading {cp}...")
+            model: model_class \
+                = model_class.load_from_checkpoint(
+                cp
+            )
+            model = model.eval().to(device)
+            model.share_memory()
+            print("model loaded")
+
+
+            for (save_ds_suffix, set) in datasets_with_suffix:
+                for temp in temps:
+                    save_path = f"{output_root}{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
+                    exists = os.path.exists(save_path)
+                    if not exists:
+                        ten_pct_steps = np.floor(np.linspace(0, len(set), 10, endpoint=False))
+                        print(f"LN {name}{save_ds_suffix}, progress: ", end="", flush=True)
+                        progress = 0
+                        all_hyps = {}
+                        for i, batch_raw in enumerate(set):
+                            if i in ten_pct_steps:
+                                print(progress, end="", flush=True)
+                                progress += 1
+                            batch = collate_fn([batch_raw]).to(device=device)
+                            hyps = model.approximate_joint_search(
+                                batch.imgs, batch.mask, use_new=True, debug=False, save_logits=False, temperature=temp
+                            )
+                            for i, hyp in enumerate(hyps):
+                                all_hyps[batch.img_bases[i]] = hyp
+                        torch.save(all_hyps, save_path)
+                        print(" saved")
 
 
 if __name__ == '__main__':

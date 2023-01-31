@@ -8,17 +8,18 @@ from comer.datamodules.crohme.variants.fixmatch_inter_oracle import CROHMEFixMat
 from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
 from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale, CoMERFixMatchInterleavedTemperatureScaling, \
-    CoMERFixMatchInterleavedFixedPctTemperatureScaling, CoMERFixMatchOracleInterleavedTempScale
+    CoMERFixMatchInterleavedFixedPctTemperatureScaling, CoMERFixMatchOracleInterleavedTempScale, \
+    CoMERFixMatchInterleavedFixedPctLogitNormTempScale
 from comer.modules.fixmatch_inter_logitnorm_ts_oracle import CoMERFixMatchOracleInterleavedLogitNormTempScale
 
 
 # class CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams(CoMERFixMatchInterleavedLogitNormTempScale):
-class CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams(CoMERFixMatchOracleInterleavedTempScale):
+class CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams(CoMERFixMatchInterleavedLogitNormTempScale):
 
     def __init__(self,
-                 temperature: float,
-                 patience: float,
-                 # monitor: str,
+                 temperature: float = 1.0,
+                 patience: float = 20,
+                 monitor: str = 'val_ExpRate',
                  **kwargs):
         super().__init__(**kwargs)
 
@@ -32,7 +33,7 @@ if __name__ == '__main__':
     trainer = UnlabeledValidationExtraStepTrainer(
         unlabeled_val_loop=True,
         accelerator='gpu',
-        devices=[1],
+        devices=[4],
         strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
         max_epochs=400,
         deterministic=True,
@@ -56,8 +57,8 @@ if __name__ == '__main__':
         precision=32,
         sync_batchnorm=True
     )
-    dm = CROHMEFixMatchOracleDatamodule(
-    # dm = CROHMEFixMatchInterleavedDatamodule(
+    # dm = CROHMEFixMatchOracleDatamodule(
+    dm = CROHMEFixMatchInterleavedDatamodule(
     # dm = CROHMESupvervisedDatamodule(
         test_year='2019',
         val_year='2019',
@@ -73,18 +74,24 @@ if __name__ == '__main__':
 
     model: CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams = CoMERFixMatchInterleavedTemperatureScalingWithAdditionalHyperParams.load_from_checkpoint(
         # './lightning_logs/version_88/checkpoints/ep=145-st=32704-valExpRate=0.4987.ckpt',
+        './lightning_logs/version_109/checkpoints/ep=245-st=55104-loss=0.4297-exp=0.5154.ckpt',
         # './lightning_logs/version_84/checkpoints/ep=143-st=16128-valExpRate=0.5146.ckpt',
-        './lightning_logs/version_77/checkpoints/epoch=41-step=236712-val_ExpRate=0.9099.ckpt',
+        # './lightning_logs/version_77/checkpoints/epoch=41-step=236712-val_ExpRate=0.9099.ckpt',
         strict=False,
         # Training (Supervised Tuning)
-        learning_rate=0.08,
+        learning_rate=0.01,
         learning_rate_target=8e-4,
         steplr_steps=6,
         # Self-Training Params
-        pseudo_labeling_threshold=0.9875,
-        # keep_old_preds=False,  # Fixed-Percent Self-Training
-        lambda_u=1.0,
-        # logit_norm_temp=0.1,
+        pseudo_labeling_threshold=0.45,
+        keep_old_preds=False,  # Fixed-Percent Self-Training
+        lambda_u=0.333,
+        logit_norm_temp=0.1,
+        partial_labeling_enabled=True,
+        partial_labeling_only_below_normal_threshold=True,
+        partial_labeling_min_conf=0.05,
+        partial_labeling_std_fac=3.5,
+        partial_labeling_std_fac_fade_conf_exp=2.0,
 
     )
 

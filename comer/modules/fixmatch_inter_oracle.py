@@ -4,6 +4,7 @@ import torch
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
 
 from comer.datamodules.crohme import Batch, vocab
+from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.modules import CoMERFixMatchInterleaved
 
 
@@ -12,7 +13,7 @@ class CoMERFixMatchOracleInterleaved(CoMERFixMatchInterleaved):
                        start_batch: Callable, end_batch: Callable, dataloader_idx: int):
         is_iter_data_fetcher = isinstance(data_fetcher, DataLoaderIterDataFetcher)
         fnames: List[str] = []
-        pseudo_labels: List[List[str]] = []
+        pseudo_labels: List[MaybePartialLabel] = []
         batch: Batch
 
         batch_idx = 0
@@ -30,7 +31,7 @@ class CoMERFixMatchOracleInterleaved(CoMERFixMatchInterleaved):
 
                 pseudo_labels.extend(
                     [
-                        vocab.indices2words(h.seq)
+                        (False, vocab.indices2words(h.seq), None)
                         if self.trainer.oracle.confidence_indices(batch.img_bases[i], h.seq)
                            >= self.pseudo_labeling_threshold
                         else [] for i, h in enumerate(self.approximate_joint_search(batch.imgs, batch.mask))

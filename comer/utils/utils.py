@@ -4,9 +4,11 @@ import torch
 import torch.nn.functional as F
 from comer.datamodules.crohme import vocab
 from einops import rearrange
-from torch import LongTensor, FloatTensor
+from torch import LongTensor, FloatTensor, Tensor
 from torch import linalg as LA
 from torchmetrics import Metric
+
+from comer.datamodules.crohme.batch import MaybePartialLabelWithIndices
 
 
 class Hypothesis:
@@ -225,9 +227,112 @@ def to_tgt_output(
     return tgt, out
 
 
+def to_tgt_output_partial(
+        maybe_partials: List[MaybePartialLabelWithIndices],
+        direction: str,
+        device: torch.device
+) -> Tuple[LongTensor, LongTensor, LongTensor]:
+    """Generate tgt and out for indices
+
+    Parameters
+    ----------
+    maybe_partials : List[MaybePartialLabelWithIndices]
+        indices: [b, l]
+    direction : str
+        one of "l2r" and "r2l"
+    device : torch.device
+
+    Returns
+    -------
+    Tuple[torch.Tensor, torch.Tensor, List[int]]
+        tgt, out: [b', l], ['b, l]
+        src_indices: [b']
+        b': Non-Zero Length batch entries.
+        Entries can be blank if a partial hypothesis only contains a L2R but no R2L hyp.
+    """
+    assert direction in {"l2r", "r2l"}
+
+    if direction == "l2r":
+        start_w = vocab.SOS_IDX
+        stop_w = vocab.EOS_IDX
+    else:
+
+        start_w = vocab.EOS_IDX
+        stop_w = vocab.SOS_IDX
+
+    token_tensors: List[Tensor] = []
+    token_tensors_append = token_tensors.append
+
+    srcs_with_labels: List[int] = []
+    srcs_with_labels_append = srcs_with_labels.append
+
+    src_repeats = torch.ones((len(maybe_partials),), dtype=torch.long, device=device)
+
+    max_len = 0
+
+    if direction == "l2r":
+        for i, label_tuple in enumerate(maybe_partials):
+            len_l2r = len(label_tuple[1]) if label_tuple[1] is not None else 0
+            len_r2l = len(label_tuple[2]) if label_tuple[2] is not None else 0
+            max_len_bi_partial = len_l2r if len_l2r > len_r2l else len_r2l
+            max_len = max_len if max_len_bi_partial < max_len else max_len_bi_partial
+            if not label_tuple[0] or (label_tuple[1] is not None and len(label_tuple[1]) > 0):
+                token_tensors_append(torch.tensor(label_tuple[1], dtype=torch.long, device=device))
+                srcs_with_labels_append(i)
+            else:
+                src_repeats[i] = 0
+
+    else:
+        for i, label_tuple in enumerate(maybe_partials):
+            len_l2r = len(label_tuple[1]) if label_tuple[1] is not None else 0
+            len_r2l = len(label_tuple[2]) if label_tuple[2] is not None else 0
+            max_len_bi_partial = len_l2r if len_l2r > len_r2l else len_r2l
+            max_len = max_len if max_len_bi_partial < max_len else max_len_bi_partial
+            if not label_tuple[0] or (label_tuple[2] is not None and len(label_tuple[2]) > 0):
+                tokens = label_tuple[2] if label_tuple[0] else label_tuple[1]
+                token_tensors_append(torch.flip(torch.tensor(tokens, dtype=torch.long, device=device), dims=[0]))
+                srcs_with_labels_append(i)
+            else:
+                src_repeats[i] = 0
+
+    batch_size = len(token_tensors)
+
+    tgt = torch.full(
+        (batch_size, max_len + 1),
+        fill_value=vocab.PAD_IDX,
+        dtype=torch.long,
+        device=device,
+    )
+    out = torch.full(
+        (batch_size, max_len + 1),
+        fill_value=vocab.PAD_IDX,
+        dtype=torch.long,
+        device=device,
+    )
+
+    # Fill the Teacher-Forcing "target" tensor and the Ouput "target" tensor which is used to compute the loss.
+    for i, (tokens, src_idx) in enumerate(zip(token_tensors, srcs_with_labels)):
+        # teacher forcing input: <SOS> <token1> <token2> <...> <tokenN> <optional-pad> <optional-pad> (l2r)
+        tgt[i, 0] = start_w
+        if maybe_partials[src_idx][0]:
+            # is partial
+            tgt[i, 1: (tokens.size(0))] = tokens[:-1]
+            # expected model output: <token1> <...> <tokenN> <optional-pad> <optional-pad> <optional-pad> (l2r)
+            # here, we don't have an EOS, since it is a partial label
+            out[i, : tokens.size(0)] = tokens
+        else:
+            # is not partial
+            tgt[i, 1: (1 + tokens.size(0))] = tokens
+            # expected model output: <token1> <...> <tokenN> <EOS> <optional-pad> <optional-pad> (l2r)
+            out[i, : tokens.size(0)] = tokens
+            out[i, tokens.size(0)] = stop_w
+
+    return tgt, out, src_repeats
+
+
 def to_bi_tgt_out(
-        tokens: List[List[int]], device: torch.device,
-) -> Tuple[LongTensor, LongTensor]:
+        tokens: List[MaybePartialLabelWithIndices], device: torch.device,
+) -> Tuple[LongTensor, LongTensor, LongTensor, LongTensor]:
     """Generate bidirection tgt and out
 
     Parameters
@@ -238,13 +343,16 @@ def to_bi_tgt_out(
 
     Returns
     -------
-    Tuple[LongTensor, LongTensor]
-        tgt, out: [2b, l], [2b, l]
+    Tuple[LongTensor, LongTensor, List[int], List[int]]
+        tgt, out: [b_L + b_R, l], [b_L + b_R, l]
+        l2r_indices: [b] - indices, s.t. a torch.repeat_interleave results in b_L length
+        r2l_indices: [b] - indices, s.t. a torch.repeat_interleave results in b_R length
+        b_L: Non-Zero Length batch entries for L2R Hypothesis.
+        b_R: Non-Zero Length batch entries for R2L Hypothesis.
     """
-    l2r_tgt, l2r_out = to_tgt_output(tokens, "l2r", device)
-    r2l_tgt, r2l_out = to_tgt_output(tokens, "r2l", device)
-
+    l2r_tgt, l2r_out, l2r_indices = to_tgt_output_partial(tokens, "l2r", device)
+    r2l_tgt, r2l_out, r2l_indices = to_tgt_output_partial(tokens, "r2l", device)
     tgt = torch.cat((l2r_tgt, r2l_tgt), dim=0)
     out = torch.cat((l2r_out, r2l_out), dim=0)
 
-    return tgt, out
+    return tgt, out, l2r_indices, r2l_indices

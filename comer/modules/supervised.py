@@ -1,6 +1,6 @@
 import math
 import zipfile
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import pytorch_lightning as pl
@@ -35,8 +35,8 @@ class CoMERSupervised(pl.LightningModule):
         early_stopping: bool,
         # training
         learning_rate: float,
-        learning_rate_target: float,
-        steplr_steps: float,
+        learning_rate_target: float = 8e-4,
+        steplr_steps: float = 10,
         test_suffix: str = "",
     ):
         super().__init__()
@@ -57,7 +57,8 @@ class CoMERSupervised(pl.LightningModule):
 
         self.exprate_recorder = ExpRateRecorder()
     def forward(
-        self, img: FloatTensor, img_mask: LongTensor, tgt: LongTensor
+        self, img: FloatTensor, img_mask: LongTensor, tgt: LongTensor,
+            l2r_indices: Union[LongTensor, None] = None, r2l_indices: Union[LongTensor, None] = None
     ) -> FloatTensor:
         """run img and bi-tgt
 
@@ -75,11 +76,11 @@ class CoMERSupervised(pl.LightningModule):
         FloatTensor
             [2b, l, vocab_size]
         """
-        return self.comer_model(img, img_mask, tgt)
+        return self.comer_model(img, img_mask, tgt, l2r_indices, r2l_indices)
 
     def training_step(self, batch: Batch, _):
-        tgt, out = to_bi_tgt_out(batch.labels, self.device)
-        out_hat = self(batch.imgs, batch.mask, tgt)
+        tgt, out, l2r_indices, r2l_indices = to_bi_tgt_out(batch.labels, self.device)
+        out_hat = self(batch.imgs, batch.mask, tgt, l2r_indices, r2l_indices)
 
         loss = ce_loss(out_hat, out)
         self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch.imgs.shape[0])
@@ -87,7 +88,7 @@ class CoMERSupervised(pl.LightningModule):
         return loss
 
     def validation_step(self, batch: Batch, _):
-        tgt, out = to_bi_tgt_out(batch.labels, self.device)
+        tgt, out, _, _ = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
 
         loss = ce_loss(out_hat, out)
@@ -103,7 +104,7 @@ class CoMERSupervised(pl.LightningModule):
 
         hyps = self.approximate_joint_search(batch.imgs, batch.mask)
 
-        self.exprate_recorder([h.seq for h in hyps], batch.labels)
+        self.exprate_recorder([h.seq for h in hyps], [label_tuple[1] for label_tuple in batch.labels])
         self.log(
             "val_ExpRate",
             self.exprate_recorder,
@@ -115,7 +116,7 @@ class CoMERSupervised(pl.LightningModule):
 
     def test_step(self, batch: Batch, _):
         hyps = self.approximate_joint_search(batch.imgs, batch.mask)
-        self.exprate_recorder([h.seq for h in hyps], batch.labels)
+        self.exprate_recorder([h.seq for h in hyps], [label_tuple[1] for label_tuple in batch.labels])
         return batch.img_bases, [vocab.indices2label(h.seq) for h in hyps], [len(h.seq) for h in hyps], [h.score for h in hyps]
 
     def test_epoch_end(self, test_outputs: List[Tuple[List[str], List[str], List[int], List[float]]]) -> None:

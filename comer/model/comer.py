@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Union
 
 import pytorch_lightning as pl
 import torch
@@ -41,7 +41,8 @@ class CoMER(pl.LightningModule):
         )
 
     def forward(
-        self, img: FloatTensor, img_mask: LongTensor, tgt: LongTensor
+        self, img: FloatTensor, img_mask: LongTensor, tgt: LongTensor,
+            l2r_indices: Union[LongTensor, None] = None, r2l_indices: Union[LongTensor, None] = None
     ) -> FloatTensor:
         """run img and bi-tgt
 
@@ -60,8 +61,19 @@ class CoMER(pl.LightningModule):
             [2b, l, vocab_size]
         """
         feature, mask = self.encoder(img, img_mask)  # [b, t, d]
-        feature = torch.cat((feature, feature), dim=0)  # [2b, t, d]
-        mask = torch.cat((mask, mask), dim=0)
+        if l2r_indices is None or r2l_indices is None:
+            feature = torch.cat((feature, feature), dim=0)  # [2b, t, d]
+            mask = torch.cat((mask, mask), dim=0)
+        else:
+            feature = torch.cat(
+                (
+                    torch.repeat_interleave(feature, l2r_indices, dim=0),
+                    torch.repeat_interleave(feature, r2l_indices, dim=0)
+                ), dim=0)  # [2b, t, d]
+            mask = torch.cat((
+                torch.repeat_interleave(mask, l2r_indices, dim=0),
+                torch.repeat_interleave(mask, r2l_indices, dim=0)
+            ), dim=0)
 
         out = self.decoder(feature, mask, tgt)
 

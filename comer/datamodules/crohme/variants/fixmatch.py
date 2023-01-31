@@ -1,4 +1,4 @@
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Dict
 from zipfile import ZipFile
 
 from torch.utils.data.dataloader import DataLoader
@@ -6,6 +6,7 @@ from torch.utils.data.dataloader import DataLoader
 from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme import build_dataset, extract_data_entries, get_splitted_indices, \
     build_batches_from_samples, DataEntry, BatchTuple
+from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.datamodules.crohme.dataset import CROHMEDataset
 from comer.datamodules.crohme.variants.collate import collate_fn, collate_fn_remove_unlabeled
 
@@ -65,9 +66,7 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
                 )
 
                 # initialize the pseudo-labels with empty labels
-                self.trainer.unlabeled_pseudo_labels = {}
-                for entry in unlabeled_data:
-                    self.trainer.unlabeled_pseudo_labels[entry.file_name] = []
+                self.setup_pseudo_label_cache(unlabeled_data)
 
                 self.val_dataset = CROHMEDataset(
                     build_dataset(archive, self.val_year, self.eval_batch_size)[0],
@@ -79,8 +78,14 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
                     "",
                 )
 
+    def setup_pseudo_label_cache(self, unlabeled_data: List[DataEntry]):
+        # initialize the pseudo-labels with empty labels
+        self.trainer.unlabeled_pseudo_labels: Dict[str, MaybePartialLabel] = {}
+        for entry in unlabeled_data:
+            self.trainer.unlabeled_pseudo_labels[entry.file_name] = (False, [], None)
+
     def add_labels_to_batches(self, batches: List[BatchTuple]):
-        if self.trainer is None or self.trainer.unlabeled_pseudo_labels is None:
+        if self.trainer is None or "unlabeled_pseudo_labels" not in self.trainer:
             return batches
         for idx, src_batch in enumerate(batches):
             src_batch[2].clear()
@@ -92,17 +97,9 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
     def get_unlabeled_for_train(self):
         self.add_labels_to_batches(self.pseudo_labeled_batches)
         filtered_batches = []
-        total_labeled = 0
         for idx, src_batch in enumerate(self.pseudo_labeled_batches):
-            src_batch[2].clear()
-            src_batch[2].extend(
-                [self.trainer.unlabeled_pseudo_labels[fname] for fname in src_batch[0]]
-            )
-            for single_item_label in src_batch[2]:
-                if len(single_item_label) > 0:
-                    total_labeled += 1
-            for single_item_label in src_batch[2]:
-                if len(single_item_label) > 0:
+            for (is_partial, label, label_r2l) in src_batch[2]:
+                if (label is not None and len(label) > 0) or (label_r2l is not None and len(label_r2l) > 0):
                     filtered_batches.append(src_batch)
                     break
         return filtered_batches
