@@ -1,3 +1,4 @@
+import logging
 from typing import Union, List, Tuple
 
 import torch
@@ -24,13 +25,10 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         super().__init__(**kwargs)
         self.save_hyperparameters()
         self.register_buffer("current_temperature", torch.ones(1) * 1.5, True)
-        self.verbose_temp_scale = True
-        self.temp_scale_only = False
+        self.verbose_temp_scale = False
 
     def set_verbose_temp_scale_optim(self, val: bool):
         self.verbose_temp_scale = val
-    def set_temp_scale_only(self, val: bool):
-        self.temp_scale_only = val
 
     def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0) -> Tuple[
         Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]
@@ -128,31 +126,27 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
             # Optimize Temperature Scaling by minimizing the CE-Loss when scaling the logits
             ece_criterion = ECELoss().to(self.device)
-            current_temperature = torch.nn.Parameter(torch.ones(1, device=self.device, requires_grad=True) * 1.5)
+            current_temperature = torch.nn.Parameter(torch.ones(1, device=self.device, requires_grad=True) * self.current_temperature.detach())
 
             if self.verbose_temp_scale:
-                before_temperature_nll = F.cross_entropy(logits / current_temperature, labels,
+                before_temperature_nll = F.cross_entropy(logits / self.current_temperature, labels,
                                                          ignore_index=vocab.PAD_IDX, reduction="mean").item()
-                before_temperature_ece = ece_criterion(logits, labels).item()
+                before_temperature_ece = ece_criterion(logits / self.current_temperature, labels).item()
 
-                print(f'Before temperature - NLL: {before_temperature_nll:.3f}, ECE: {before_temperature_ece:.3f}')
+                logging.info(f'Before temperature - NLL: {before_temperature_nll:.3f}, ECE: {before_temperature_ece:.3f}')
 
 
 
             with torch.enable_grad() and torch.inference_mode(False):
-                optimizer = optim.LBFGS([current_temperature], lr=0.01, max_iter=100)
-
-                prev_temp = self.current_temperature
+                optimizer = optim.LBFGS([current_temperature], lr=0.01, max_iter=200)
                 def eval_curr_temp():
                     optimizer.zero_grad()
-                    loss = ece_criterion(logits / current_temperature, labels) \
-                           + 3 * F.cross_entropy(logits / current_temperature, labels,
-                                             ignore_index=vocab.PAD_IDX, reduction="mean")
+                    # loss = ece_criterion(logits / torch.abs(current_temperature), labels) \
+                    #        + 3 * F.cross_entropy(logits / torch.abs(current_temperature), labels,
+                    #                          ignore_index=vocab.PAD_IDX, reduction="mean")
                     # loss = ce_logitnorm_loss(logits / current_temperature, labels)
-                    # loss = F.cross_entropy(logits / current_temperature, labels,
-                    #                        ignore_index=vocab.PAD_IDX, reduction="mean")
-                    if not self.temp_scale_only and prev_temp != 1.0:
-                        loss += torch.abs(current_temperature - prev_temp)
+                    loss = F.cross_entropy(logits / torch.abs(current_temperature), labels,
+                                           ignore_index=vocab.PAD_IDX, reduction="mean")
                     loss.backward()
                     return loss
 
@@ -161,21 +155,21 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                 optimizer.step(eval_curr_temp)
 
                 if self.verbose_temp_scale:
-                    after_temperature_nll = F.cross_entropy(logits / current_temperature, labels,
+                    after_temperature_nll = F.cross_entropy(logits / torch.abs(current_temperature), labels,
                                                             ignore_index=vocab.PAD_IDX, reduction="mean").item()
-                    after_temperature_ece = ece_criterion(logits / current_temperature, labels).item()
-                    print(f'Optimal temperature: {current_temperature.item():.3f}')
-                    print(f'After temperature - NLL: {after_temperature_nll:.3f}, ECE: {after_temperature_ece:.3f}')
+                    after_temperature_ece = ece_criterion(logits / torch.abs(current_temperature), labels).item()
+                    logging.info(f'Optimal temperature: {torch.abs(current_temperature).item():.3f}')
+                    logging.info(f'After temperature - NLL: {after_temperature_nll:.3f}, ECE: {after_temperature_ece:.3f}')
 
                 if self.local_rank == 0:
                     tb_logger: SummaryWriter = self.logger.experiment
                     tb_logger.add_scalar(
                         "temperature_scaling_result",
-                        current_temperature.item(),
+                        torch.abs(current_temperature).item(),
                         self.current_epoch
                     )
-                if current_temperature >= 1e-4:
-                    self.current_temperature = current_temperature
+                self.current_temperature = torch.nn.Parameter(torch.abs(current_temperature))
+
                 # Find best confidence threshold for pseudo-labeling.
                 # TODO: Move from learnable to heuristic, that's why it's currently disabled
                 # correct_scores: Tensor = torch.tensor(correct_scores, device=self.device, requires_grad=True)

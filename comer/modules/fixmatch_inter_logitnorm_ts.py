@@ -1,3 +1,4 @@
+import logging
 from typing import List, Tuple
 
 import torch
@@ -49,7 +50,7 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
             if hasattr(self.trainer, 'unlabeled_norm_factor'):
                 unlabeled_norm_fac = self.trainer.unlabeled_norm_factor
             else:
-                print("WARN: unlabeled norm factor was unset, but is expected to be set before the training begins.")
+                logging.warning("WARN: unlabeled norm factor was unset, but is expected to be set before the training begins.")
             loss += ce_logitnorm_loss(out_hat[unlabeled_mask], out[unlabeled_mask], self.logit_temp) \
                     * self.hparams.lambda_u * unlabeled_mask.count_nonzero() / batch_size
         else:

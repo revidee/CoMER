@@ -1,3 +1,5 @@
+import logging
+
 import torch
 
 from comer.datamodules.crohme import Batch
@@ -38,7 +40,7 @@ class CoMERFixMatchInterleaved(CoMERFixMatch):
             if hasattr(self.trainer, 'unlabeled_norm_factor'):
                 unlabeled_norm_fac = self.trainer.unlabeled_norm_factor
             else:
-                print("WARN: unlabeled norm factor was unset, but is expected to be set before the training begins.")
+                logging.warning("WARN: unlabeled norm factor was unset, but is expected to be set before the training begins.")
             loss += ce_loss(out_hat[unlabeled_mask], out[unlabeled_mask]) \
                         * self.hparams.lambda_u * unlabeled_mask.count_nonzero() / batch_size
         else:

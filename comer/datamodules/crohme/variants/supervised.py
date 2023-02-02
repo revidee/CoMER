@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import  Optional
 from zipfile import ZipFile
@@ -38,7 +39,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
         self.unlabeled_pct = unlabeled_pct
         self.train_sorting = train_sorting
 
-        print(f"Load data from: {self.zipfile_path}")
+        logging.info(f"Load data from: {self.zipfile_path}")
 
     def setup(self, stage: Optional[str] = None) -> None:
         with ZipFile(self.zipfile_path) as archive:

@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import List, Tuple, Iterable, Union, Callable
 
@@ -91,7 +92,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
 
     def validation_unlabeled_step_end(self, to_gather: Iterable[Tuple[int, List[List[str]]]]):
         if not hasattr(self.trainer, 'unlabeled_pseudo_labels'):
-            print("warn: trainer does not have the pseudo-label state, cannot update pseudo-labels")
+            logging.warning("warn: trainer does not have the pseudo-label state, cannot update pseudo-labels")
             return
 
         all_gpu_labels: List[Union[None, List[Tuple[int, List[MaybePartialLabel]]]]] = [None for _ in range(dist.get_world_size())]

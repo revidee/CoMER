@@ -1,3 +1,4 @@
+import logging
 import math
 import zipfile
 from typing import List, Tuple, Union
@@ -5,6 +6,7 @@ from typing import List, Tuple, Union
 import numpy as np
 import pytorch_lightning as pl
 import torch.optim as optim
+from pytorch_lightning.utilities import rank_zero_only
 from torch import FloatTensor, LongTensor
 
 from comer.datamodules.crohme import vocab, Batch
@@ -38,9 +40,13 @@ class CoMERSupervised(pl.LightningModule):
         learning_rate_target: float = 8e-4,
         steplr_steps: float = 10,
         test_suffix: str = "",
+
+        temperature: float = 1.0,
+        patience: float = 20,
+        monitor: str = 'val_ExpRate',
     ):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["temperature", "patience", "monitor"])
 
         self.comer_model = CoMER(
             d_model=d_model,
@@ -121,7 +127,7 @@ class CoMERSupervised(pl.LightningModule):
 
     def test_epoch_end(self, test_outputs: List[Tuple[List[str], List[str], List[int], List[float]]]) -> None:
         exprate = self.exprate_recorder.compute()
-        print(f"Validation ExpRate: {exprate}")
+        logging.info(f"Validation ExpRate: {exprate}")
 
         with zipfile.ZipFile(f"result{self.hparams.test_suffix}.zip", "w") as zip_f:
             for img_bases, preds, _, _ in test_outputs:
@@ -176,3 +182,17 @@ class CoMERSupervised(pl.LightningModule):
         }
 
         return {"optimizer": optimizer, "lr_scheduler": scheduler}
+    def log_stats_from_dl_suffix(self, suffix: str = ''):
+        metrics = self.trainer.callback_metrics
+        ts_log_str = ''
+        if hasattr(self, 'current_temperature'):
+            ts_log_str = f' ts: {self.current_temperature.item():.4f}'
+        logging.info(f'Epoch {self.current_epoch}: ExpRate: {metrics[f"val_ExpRate{suffix}"]} loss: {metrics[f"val_loss{suffix}"]}{ts_log_str}')
+
+    @rank_zero_only
+    def on_validation_epoch_end(self):
+        metrics = self.trainer.callback_metrics
+        if 'val_ExpRate' in metrics:
+            self.log_stats_from_dl_suffix()
+        elif 'val_ExpRate/dataloader_idx_0' in metrics:
+            self.log_stats_from_dl_suffix('/dataloader_idx_0')

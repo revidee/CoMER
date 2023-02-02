@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 from typing import List, Any, Optional, Union
 from zipfile import ZipFile
@@ -56,6 +57,6 @@ def extract_data_entries(archive: ZipFile, dir_name: str,
                 img = ToTensor()(img).to(device=to_device)
         data.append(DataEntry(file_name, img, False, label, None))
 
-    print(f"Extract data from: {dir_name}, with data size: {len(data)}")
+    logging.info(f"Extract data from: {dir_name}, with data size: {len(data)}")
 
     return np.array(data)

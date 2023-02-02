@@ -1,3 +1,4 @@
+import logging
 import math
 from typing import Callable, List, Iterable, Tuple, Union, Dict
 
@@ -59,7 +60,7 @@ class CoMERFixMatchInterleavedFixedPctTemperatureScaling(CoMERFixMatchInterleave
 
     def validation_unlabeled_step_end(self, to_gather: Iterable[Tuple[str, List[Tuple[List[str], float]]]]):
         if not hasattr(self.trainer, 'unlabeled_pseudo_labels'):
-            print("warn: trainer does not have the pseudo-label state, cannot update pseudo-labels")
+            logging.warning("warn: trainer does not have the pseudo-label state, cannot update pseudo-labels")
             return
 
         all_gpu_labels: List[Union[None, List[Tuple[str, Tuple[MaybePartialLabel, float]]]]] = [None for _ in range(dist.get_world_size())]

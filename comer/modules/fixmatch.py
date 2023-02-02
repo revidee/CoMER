@@ -14,6 +14,8 @@ from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out, ExpRateRecorder, Hypothesis)
 import torch.distributed as dist
 
+import logging
+
 
 class CoMERFixMatch(CoMERSelfTraining):
 
@@ -168,7 +170,7 @@ class CoMERFixMatch(CoMERSelfTraining):
 
     def validation_unlabeled_step_end(self, to_gather: Iterable[Tuple[int, List[List[str]]]]):
         if not hasattr(self.trainer, 'unlabeled_pseudo_labels'):
-            print("warn: trainer does not have the pseudo-label state, cannot update pseudo-labels")
+            logging.warning("trainer does not have the pseudo-label state, cannot update pseudo-labels")
             return
 
         all_gpu_labels: List[Union[None, List[Tuple[str, MaybePartialLabel]]]] = [None for _ in
@@ -213,4 +215,4 @@ class CoMERFixMatch(CoMERSelfTraining):
                 self.unlabeled_threshold_passing_exprate_recorder.compute().item(),
                 self.current_epoch
             )
-            print(f"passed-epoch: {total_passed_this_step}, total: {total_passed}")
+            logging.info(f"passed-epoch: {total_passed_this_step}, total: {total_passed}")

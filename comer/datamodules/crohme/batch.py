@@ -1,3 +1,4 @@
+import logging
 import math
 from dataclasses import dataclass
 from typing import List, Tuple, Callable, Any, Union
@@ -197,14 +198,14 @@ def build_batches_from_samples(
             biggest_image_size = size
         batch_image_size = biggest_image_size * (i + 1)
         if len(entry.label) > maxlen:
-            print("label", i, "length bigger than", maxlen, "ignore")
+            logging.info(f"label {i} length bigger than {maxlen}, ignoring..")
         elif size > max_imagesize:
             if is_pil_image:
-                print(
+                logging.info(
                     f"image: {entry.file_name} size: {image_arr.shape[0]} x {image_arr.shape[1]} = {size} bigger than {max_imagesize}, ignore"
-                )
+                            )
             else:
-                print(
+                logging.info(
                     f"image: {entry.file_name} size: {image_arr.size(0)} x {image_arr.size(1)} = {size} bigger than {max_imagesize}, ignore"
                 )
         else:
@@ -233,7 +234,7 @@ def build_batches_from_samples(
         total_label_batches.append(next_batch_labels)
         total_unlabeled_start_batches.append(len(next_batch_file_names))
 
-    print(len(total_feature_batches), f"batches loaded")
+    logging.info(f"{len(total_feature_batches)} batches loaded")
     return list(
         # Zips batches into a 4-Tuple Tuple[ List[str] , List[np.ndarray], List[List[str]], bool ]
         #                        Per batch:  file_names, images          , labels           is_labeled

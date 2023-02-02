@@ -91,7 +91,6 @@ if __name__ == '__main__':
             # logit_norm_temp=0.05,
         )
         model.set_verbose_temp_scale_optim(True)
-        model.set_temp_scale_only(True)
 
         with ZipFile("data.zip") as f:
             trainer.validate(model, DataLoader(

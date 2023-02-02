@@ -3,6 +3,7 @@ fit:
 
   trainer:
     enable_checkpointing: true
+    unlabeled_val_loop: true
     callbacks:
       - class_path: pytorch_lightning.callbacks.LearningRateMonitor
         init_args:
@@ -22,14 +23,14 @@ fit:
 #    accelerator: 'cpu'
     # fast_dev_run: True
     accelerator: 'gpu'
-    devices: 2,3
+    devices: 7,
     sync_batchnorm: true
     strategy:
       class_path: pytorch_lightning.strategies.ddp.DDPStrategy
       init_args:
         find_unused_parameters: False
-    check_val_every_n_epoch: 2
-    max_epochs: 600
+    check_val_every_n_epoch: 1
+    max_epochs: 500
     deterministic: true
   model:
     class_path: comer.modules.CoMERFixMatchInterleavedTemperatureScaling
@@ -67,5 +68,5 @@ fit:
       eval_batch_size: 4
       num_workers: 5
       train_aug: weak
-      unlabeled_pct: 0.85
+      unlabeled_pct: 0.5
       train_sorting: 1
