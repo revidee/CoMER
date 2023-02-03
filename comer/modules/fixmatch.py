@@ -79,7 +79,6 @@ class CoMERFixMatch(CoMERSelfTraining):
 
         self.log("train_loss", loggable_total_loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch_size)
         return loss
-
     def unlabeled_full(self, data_fetcher: AbstractDataFetcher,
                        start_batch: Callable, end_batch: Callable, dataloader_idx: int):
         is_iter_data_fetcher = isinstance(data_fetcher, DataLoaderIterDataFetcher)

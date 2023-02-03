@@ -15,6 +15,5 @@ class UnlabeledLightningModule(ABC):
     def validation_unlabeled_step_end(self, output):
         return
 
-    @abstractmethod
     def validation_dataloader_end(self, output):
-        return
+        pass

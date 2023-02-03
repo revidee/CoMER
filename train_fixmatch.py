@@ -141,7 +141,7 @@ def main(
         assert pprof in PARTIAL_LABEL_PROFILES
 
     lu_addition = f'_lu{lu}' if lu != 1.0 else ''
-    partial_addition = f'' if len(pprof) else f'_{pprof}{f"_{pmthresh}" if pmthresh is not None else ""}'
+    partial_addition = f'' if len(pprof) == 0 else f'_{pprof}{f"_{pmthresh}" if pmthresh is not None else ""}'
     st_addition = f'_{pct*100:.0f}_{thresh}' \
                   f'_{"keep" if keeppreds else "nokeep"}' \
                   f'{lu_addition}' \

@@ -34,7 +34,7 @@ class CoMERFixMatchOracleInterleaved(CoMERFixMatchInterleaved):
                         (False, vocab.indices2words(h.seq), None)
                         if self.trainer.oracle.confidence_indices(batch.img_bases[i], h.seq)
                            >= self.pseudo_labeling_threshold
-                        else [] for i, h in enumerate(self.approximate_joint_search(batch.imgs, batch.mask))
+                        else (False, [], None) for i, h in enumerate(self.approximate_joint_search(batch.imgs, batch.mask))
                     ]
                 )
 
