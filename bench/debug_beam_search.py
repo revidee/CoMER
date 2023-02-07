@@ -121,59 +121,59 @@ def main(gpu: int = -1):
             oracle = Oracle(full_data)
             oracle.add_data(full_data_test)
 
-            confidence_measure_ap_ece_table(
-                [
-                    torch.load("../hyps_s_100_new_original_test.pt", map_location=torch.device('cpu')),
-                    torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
-                    torch.load("../hyps_s_15_new_original_test.pt", map_location=torch.device('cpu')),
-                ],
-                oracle
-            )
+            # confidence_measure_ap_ece_table(
+            #     [
+            #         torch.load("../hyps_s_100_new_original_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_15_new_original_test.pt", map_location=torch.device('cpu')),
+            #     ],
+            #     oracle
+            # )
 
             # eval_sorting_score(oracle, True, 1.0, True)
 
-            # fig, axes = plt.subplots(1)
+            fig, axes = plt.subplots(1)
 
+            hyps_base = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
             # hyps_base = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
             # hyps_ln = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
 
 
-            # calc_tp_as_all_correct = False
+            calc_tp_as_all_correct = False
 
             # BIMIN, 3.5, partial 0
 
-            # for (all_hyps, name, fn, partial_mode, fac, threshold, min_threshold, color) in [
-            #     (hyps_base, "BIMIN", score_bimin, 0, None, 0.0, 0.0, matplotlib.colormaps['Reds'](0.9)),
-            #     (hyps_base, "BIMIN", score_bimin, 0, 3.5, 0.65, 0.15, matplotlib.colormaps['Reds'](0.7)),
-            #     (hyps_base, "BIMIN", score_bimin, 5, 3.5, 0.65, 0.15, matplotlib.colormaps['Reds'](0.6)),
-            #     (hyps_base, "BIMIN", score_bimin, 6, 3.5, 0.65, 0.15, matplotlib.colormaps['Reds'](0.5)),
-            #     (hyps_base, "BIMIN", score_bimin, 7, 3.5, 0.65, 0.15, matplotlib.colormaps['Reds'](0.3)),
-            #     (hyps_ln, "ORI LN", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.9)),
-            #     (hyps_ln, "ORI LN", score_ori, 0, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.7)),
-            #     (hyps_ln, "ORI LN", score_ori, 5, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.6)),
-            #     (hyps_ln, "ORI LN", score_ori, 6, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.5)),
-            #     (hyps_ln, "ORI LN", score_ori, 7, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.3)),
-            #     # ("BIMIN", score_bimin, 3, 0.8, matplotlib.colormaps['Greens']),
-            #     # ("BIAVG", score_bi_avg, 0, 0.6, matplotlib.colormaps['Greens']),
-            #     # ("BIMIN", score_bimin, 0, 0.6, matplotlib.colormaps['Blues']),
-            # ]:
-            #     threshold = (float('-Inf') if threshold == 0.0 else np.log(threshold))
-            #     min_threshold = float('-Inf') if min_threshold == 0.0 else np.log(min_threshold)
-            #     precisions, recalls, auc, skips, total = average_precision(
-            #         all_hyps,
-            #         fn,
-            #         oracle,
-            #         fac,
-            #         calc_tp_as_all_correct=calc_tp_as_all_correct,
-            #         partial_mode=partial_mode,
-            #         partial_threshold=threshold,
-            #         min_threshold=min_threshold
-            #     )
-            #     visual = metrics.PrecisionRecallDisplay(precisions, recalls)
-            #     # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
-            #     visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
-            #
-            # plt.show()
+            for (all_hyps, name, fn, partial_mode, fac, threshold, min_threshold, color) in [
+                (hyps_base, "BIMIN", score_bimin, 0, None, 0.0, 0.0, matplotlib.colormaps['Reds'](0.6)),
+                (hyps_base, "ORI", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Greens'](0.6)),
+                (hyps_base, "BIAVG", score_bi_avg, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.6)),
+                # (hyps_ln, "ORI LN", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.9)),
+                # (hyps_ln, "ORI LN", score_ori, 0, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.7)),
+                # (hyps_ln, "ORI LN", score_ori, 5, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.6)),
+                # (hyps_ln, "ORI LN", score_ori, 6, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.5)),
+                # (hyps_ln, "ORI LN", score_ori, 7, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.3)),
+                # ("BIMIN", score_bimin, 3, 0.8, matplotlib.colormaps['Greens']),
+                # ("BIAVG", score_bi_avg, 0, 0.6, matplotlib.colormaps['Greens']),
+                # ("BIMIN", score_bimin, 0, 0.6, matplotlib.colormaps['Blues']),
+            ]:
+                threshold = (float('-Inf') if threshold == 0.0 else np.log(threshold))
+                min_threshold = float('-Inf') if min_threshold == 0.0 else np.log(min_threshold)
+                precisions, recalls, auc, skips, total = average_precision(
+                    all_hyps,
+                    fn,
+                    oracle,
+                    fac,
+                    calc_tp_as_all_correct=calc_tp_as_all_correct,
+                    partial_mode=partial_mode,
+                    partial_threshold=threshold,
+                    min_threshold=min_threshold
+                )
+                visual = metrics.PrecisionRecallDisplay(precisions, recalls)
+                # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
+                # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
+                visual.plot(ax=axes, name=f"{name} AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
+
+            plt.show()
 
             # hyps_s_35_new_original_1.pt
 

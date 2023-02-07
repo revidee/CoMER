@@ -9,7 +9,7 @@ from torch.utils.tensorboard import SummaryWriter
 from comer.datamodules.crohme import Batch, vocab
 from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.modules import CoMERSelfTraining
-from comer.utils.conf_measures import th_fn_bimin, score_bimin
+from comer.utils.conf_measures import th_fn_bimin, score_bimin, score_ori, CONF_MEASURES
 from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out, ExpRateRecorder, Hypothesis)
 import torch.distributed as dist
@@ -28,6 +28,7 @@ class CoMERFixMatch(CoMERSelfTraining):
             partial_labeling_std_fac: float = 1.0,
             partial_labeling_std_fac_fade_conf_exp: float = 0.0,
             keep_old_preds: bool = False,
+            conf_fn: str = 'ori',
             **kwargs
     ):
         super().__init__(**kwargs)
@@ -38,6 +39,8 @@ class CoMERFixMatch(CoMERSelfTraining):
         self.save_hyperparameters()
         self.unlabeled_exprate_recorder = ExpRateRecorder()
         self.unlabeled_threshold_passing_exprate_recorder = ExpRateRecorder()
+        assert conf_fn in CONF_MEASURES
+        self.confidence_fn = CONF_MEASURES[conf_fn]
 
     def training_step(self, batches: Dict[str, Batch], _):
         tgt, out, l2r_indices, r2l_indices = to_bi_tgt_out(batches["labeled"].labels, self.device)
@@ -126,8 +129,10 @@ class CoMERFixMatch(CoMERSelfTraining):
 
     def maybe_partial_label(self,
                             hyp: Hypothesis,
-                            conf_fn: Callable[[Hypothesis], float] = score_bimin
+                            conf_fn: Callable[[Hypothesis], float] = None
                             ) -> MaybePartialLabel:
+        if conf_fn is None:
+            conf_fn = self.confidence_fn
         total_conf = conf_fn(hyp)
         seq_len = len(hyp.seq)
         if seq_len == 0:
@@ -187,7 +192,7 @@ class CoMERFixMatch(CoMERSelfTraining):
                         (partial_label[2] is not None and len(partial_label[2]) > 0):
                     total_passed_this_step += 1
                     self.trainer.unlabeled_pseudo_labels[fname] = partial_label
-        if self.local_rank == 0:
+        if self.local_rank == 0 and self.logger is not None:
             total_passed = 0
             for partial_label in self.trainer.unlabeled_pseudo_labels.values():
                 if (partial_label[1] is not None and len(partial_label[1]) > 0) or \

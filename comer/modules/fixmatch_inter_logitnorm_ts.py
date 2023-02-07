@@ -61,18 +61,20 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
 
     def approximate_joint_search(
             self, img: FloatTensor, mask: LongTensor, use_new: bool = True,
-            save_logits: bool = False, debug=False, temperature=None
+            save_logits: bool = False, debug=False, temperature=None, global_pruning: str = None
     ) -> List[Hypothesis]:
         if temperature is None:
             temperature = self.current_temperature.item()
         hp = dict(self.hparams)
+        if global_pruning is None:
+            global_pruning = self.hparams['global_pruning_mode']
         if "temperature" in hp:
             del hp["temperature"]
         if "logit_norm_temp" in hp:
             del hp["logit_norm_temp"]
         return self.comer_model.new_beam_search(
             img, mask, **hp, scoring_run=True, bi_dir=True,
-            save_logits=save_logits, debug=debug, temperature=temperature
+            save_logits=save_logits, debug=debug, temperature=temperature, global_pruning=global_pruning
         )
 
     def process_out_hat(self, out_hat):

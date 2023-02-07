@@ -18,7 +18,7 @@ from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale, CoMERFixMa
     CoMERFixMatchInterleavedFixedPctLogitNormTempScale, CoMERSupervised, CoMERFixMatchInterleaved, \
     CoMERFixMatchOracleInterleaved, CoMERFixMatchInterleavedFixedPct
 from comer.modules.fixmatch_inter_logitnorm_ts_oracle import CoMERFixMatchOracleInterleavedLogitNormTempScale
-
+from comer.utils.conf_measures import CONF_MEASURES
 
 AVAILABLE_MODELS = {
     'sup': CoMERSupervised,
@@ -59,8 +59,15 @@ LEARNING_PROFILES = {
         'epochs': 400,
         'learning_rate': 0.08,
         'learning_rate_target': 8e-5,
-        'steplr_steps': 10,
+        'steplr_steps': 8,
         'check_val_every_n_epoch': 1
+    },
+    'initial_val2': {
+        'epochs': 400,
+        'learning_rate': 0.08,
+        'learning_rate_target': 8e-5,
+        'steplr_steps': 8,
+        'check_val_every_n_epoch': 2
     },
     'st': {
         'epochs': 400,
@@ -113,11 +120,13 @@ def main(
         dm: str = 'sup',
         learn: str = 'initial',
         lntemp: float = 0.1,
+        conf: str = 'ori'
 ):
 
     assert model in AVAILABLE_MODELS
     assert dm in AVAILABLE_DATAMODULES
     assert learn in LEARNING_PROFILES
+    assert conf in CONF_MEASURES
 
     cp_addition = ''
 
@@ -240,6 +249,9 @@ def main(
         'keep_old_preds': keeppreds,  # Fixed-Percent Self-Training
         'lambda_u': lu,
     }
+
+    if model != 'sup':
+        kwargs["conf_fn"] = conf
 
     del learning["epochs"]
     del learning["check_val_every_n_epoch"]

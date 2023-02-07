@@ -25,7 +25,7 @@ def main():
         seed_everything(7)
 
         calc_ece = True
-        calc_name = "plots_test_bimin"
+        calc_name = "plots_35_single"
 
         if calc_ece:
 
@@ -37,10 +37,10 @@ def main():
             oracle.add_data(full_data_test)
             all_hyps: List[Dict[str, Hypothesis]] = []
 
-            all_hyps.append(torch.load("../hyps_s_35_new_test_bimin.pt",
+            all_hyps.append(torch.load("../hyps_s_35_new_original_1.pt",
                                        map_location=torch.device('cpu')))
-            all_hyps.append(torch.load("../hyps_s_35_new_original_ts_ce.pt",
-                                       map_location=torch.device('cpu')))
+            # all_hyps.append(torch.load("../hyps_s_35_new_original_ts_ce.pt",
+            #                            map_location=torch.device('cpu')))
             # all_hyps.append(torch.load("../hyps_s_35_new_original_ts_ece.pt",
             #                            map_location=torch.device('cpu')))
             # all_hyps.append(torch.load("../hyps_s_35_new_original_ts_both.pt",
@@ -85,12 +85,12 @@ def main():
                 return (math.exp(score_bisum(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
 
             scoring_fns = [
-                hyp_to_triplet_ori,
-                hyp_to_triplet_biavg,
+                # hyp_to_triplet_ori,
+                # hyp_to_triplet_biavg,
                 # hyp_to_triplet_rev_avg,
                 hyp_to_triplet_bimin,
-                hyp_to_triplet_mult,
-                hyp_to_triplet_bimult
+                # hyp_to_triplet_mult,
+                # hyp_to_triplet_bimult
             ]
 
             plots = [
@@ -104,16 +104,16 @@ def main():
             plots = torch.load(f"{calc_name}.pt", map_location=device)
 
         titles = [
-            "ORI",
-            "BIAVG",
+            # "ORI",
+            # "BIAVG",
             # "REV_AVG",
             "BIMIN",
-            "MULT",
-            "BIMULT"
+            # "MULT",
+            # "BIMULT"
         ]
         all_hyp_titles = [
-            "Bimin Epoch 1",
-            "TS CE",
+            "35% Supervised",
+            # "TS CE",
             # "TS ECE",
             # "TS CE+ECE",
         ]
@@ -124,9 +124,22 @@ def main():
         linewidth = 0.5
         edgecolor = "#444444"
 
+        def get_ax(row_idx, col_idx):
+            if len(plots) == 1:
+                if len(data_per_scoring_fn) == 1:
+                    ax = axes
+                else:
+                    ax = axes[col_idx]
+            else:
+                if len(data_per_scoring_fn) == 1:
+                    ax = axes[row_idx]
+                else:
+                    ax = axes[row_idx][col_idx]
+            return ax
+
         for row_idx, (data_per_scoring_fn) in enumerate(plots):
             for col_idx, (accs, confs, samples, (ece, tot_acc)) in enumerate(data_per_scoring_fn):
-                ax = axes[row_idx][col_idx]
+                ax = get_ax(row_idx, col_idx)
                 width = (1 / 15)  # the width of the bars: can also be len(x) sequence
                 for i in range(len(accs)):
                     acc_exp = (i / len(accs)) + (1 / (2 * len(accs)))
@@ -168,12 +181,12 @@ def main():
                 ax.set_xlim((0, 1.0))
                 ax.set_ylim((0, 1.0))
         for col_idx, title in enumerate(titles):
-            axes[0][col_idx].set_title(title)
-            axes[len(all_hyp_titles) - 1][col_idx].set_xlabel("Confidence")
+            get_ax(0, col_idx).set_title(title)
+            get_ax(len(all_hyp_titles) - 1, col_idx).set_xlabel("Confidence")
         for i, title in enumerate(all_hyp_titles):
-            axes[i][0].set_ylabel(f"{title}\nExpRate-0")
-        axes[0][0].text(0.05, 1.1, "Overconfidence", backgroundcolor="#e83429dd", ha="left")
-        axes[0][len(titles) - 1].text(0.95, 1.1, "Underconfidence", backgroundcolor="#157f3bdd", ha="right")
+            get_ax(i, 0).set_ylabel(f"{title}\nExpRate-0")
+        get_ax(0, 0).text(0.075, 0.975, "Overconfidence", backgroundcolor="#e83429dd", ha="left", transform=plt.gcf().transFigure)
+        get_ax(0, len(titles) - 1).text(0.96, 0.975, "Underconfidence", backgroundcolor="#157f3bdd", ha="right", transform=plt.gcf().transFigure)
 
         plt.show()
 

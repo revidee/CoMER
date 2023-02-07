@@ -34,7 +34,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
         self.log("train_loss", loss, on_step=False, on_epoch=True, sync_dist=True, batch_size=batch.imgs.shape[0])
         return loss
 
-    def validation_step(self, batch: Batch, batch_idx, dataloader_idx):
+    def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0):
         if self.current_epoch <= self.trainer.check_val_every_n_epoch:
             fake_loss = torch.tensor(0.0, device=self.device)
             self.log(

@@ -41,6 +41,8 @@ class CoMERSupervised(pl.LightningModule):
         steplr_steps: float = 10,
         test_suffix: str = "",
 
+        global_pruning_mode: str = 'sup',
+
         temperature: float = 1.0,
         patience: float = 20,
         monitor: str = 'val_ExpRate',
@@ -121,7 +123,7 @@ class CoMERSupervised(pl.LightningModule):
         )
 
     def test_step(self, batch: Batch, _):
-        hyps = self.approximate_joint_search(batch.imgs, batch.mask)
+        hyps = self.approximate_joint_search(batch.imgs, batch.mask, global_pruning='none')
         self.exprate_recorder([h.seq for h in hyps], [label_tuple[1] for label_tuple in batch.labels])
         return batch.img_bases, [vocab.indices2label(h.seq) for h in hyps], [len(h.seq) for h in hyps], [h.score for h in hyps]
 
@@ -142,15 +144,19 @@ class CoMERSupervised(pl.LightningModule):
             file.close()
     def approximate_joint_search(
             self, img: FloatTensor, mask: LongTensor, use_new: bool = True,
-            save_logits: bool = False, debug=False, temperature=None
+            save_logits: bool = False, debug=False, temperature=None, global_pruning: str = None
     ) -> List[Hypothesis]:
         if temperature is None:
             temperature = 1
+        if global_pruning is None:
+            global_pruning = self.hparams['global_pruning_mode']
         hp = dict(self.hparams)
         if "temperature" in hp:
             del hp["temperature"]
         if use_new:
-            return self.comer_model.new_beam_search(img, mask, **hp, scoring_run=True, bi_dir=True, save_logits=save_logits, debug=debug, temperature=temperature)
+            return self.comer_model.new_beam_search(img, mask, **hp, scoring_run=True, bi_dir=True,
+                                                    save_logits=save_logits, debug=debug,
+                                                    temperature=temperature, global_pruning=global_pruning)
         return self.comer_model.beam_search(img, mask, **hp, scoring_run=True, bi_dir=True, debug=debug)
 
 

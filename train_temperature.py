@@ -1,3 +1,5 @@
+import logging
+import sys
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -23,7 +25,8 @@ class CoMERFixMatchInterleavedTemperatureScalingWithAdditionHyperParams(CoMERFix
 
 if __name__ == '__main__':
 
-
+    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
     cps = [
         # ("./lightning_logs/version_64/checkpoints/epoch=177-step=46814-val_ExpRate=0.5079.ckpt"),
@@ -35,7 +38,8 @@ if __name__ == '__main__':
         # ("./lightning_logs/version_68/checkpoints/epoch=257-step=67854-val_ExpRate=0.5013.ckpt"),
         # ("./lightning_logs/version_71/checkpoints/epoch=197-step=52074-val_ExpRate=0.5321.ckpt"),
         # ("./lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt"),
-        ("./lightning_logs/version_21/checkpoints/epoch=289-step=64960-val_ExpRate=0.3628.ckpt"),
+        # ("./lightning_logs/version_21/checkpoints/epoch=289-step=64960-val_ExpRate=0.3628.ckpt"),
+        ("./lightning_logs/version_128/checkpoints/epoch=234-step=178365-val_loss=0.3255.ckpt"),
     ]
 
     for cp_path in cps:
@@ -43,23 +47,13 @@ if __name__ == '__main__':
         trainer = UnlabeledValidationExtraStepTrainer(
             unlabeled_val_loop=True,
             accelerator='gpu',
-            devices=[2,3],
+            devices=[2],
             strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
-            max_epochs=300,
             deterministic=True,
-            reload_dataloaders_every_n_epochs=2,
-            check_val_every_n_epoch=2,
-            callbacks=[
-                LearningRateMonitor(logging_interval='epoch'),
-                ModelCheckpoint(save_top_k=1,
-                                monitor='val_ExpRate/dataloader_idx_0',
-                                mode='max',
-                                filename='ep={epoch}-st={step}-valLoss={val_ExpRate/dataloader_idx_0:.4f}',
-                                auto_insert_metric_name=False
-                                ),
-            ],
             precision=32,
-            inference_mode=False
+            inference_mode=False,
+            enable_checkpointing=False,
+            logger=False,
         )
         dm = CROHMEFixMatchInterleavedDatamodule(
             test_year='2019',
@@ -79,7 +73,7 @@ if __name__ == '__main__':
             print(f"Checkpoint '{cp_path}' not found, skipping.")
             continue
 
-        model: CoMERFixMatchInterleavedTemperatureScalingWithAdditionHyperParams = CoMERFixMatchInterleavedTemperatureScalingWithAdditionHyperParams.load_from_checkpoint(
+        model: CoMERFixMatchInterleavedTemperatureScaling = CoMERFixMatchInterleavedTemperatureScaling.load_from_checkpoint(
             cp_path,
             strict=False,
             # Training

@@ -67,3 +67,16 @@ def score_bi_avg(hyp: Hypothesis):
 def th_fn_bisum_avg(hyp, th):
     seq_len = len(hyp.seq)
     return (score_bisum_avg(hyp) >= th) if seq_len else False
+
+
+CONF_MEASURES = {
+    'ori': score_ori,
+    'min': score_min,
+    'bimin': score_bimin,
+    'mult': score_sum,
+    'revmult': score_rev_sum,
+    'bimult': score_bisum,
+    'bimultavg': score_bisum_avg,
+    'avg': score_avg,
+    'biavg': score_bi_avg
+}

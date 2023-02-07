@@ -398,6 +398,7 @@ class DecodeModel(pl.LightningModule):
             debug: bool = False,
             save_logits: bool = False,
             logit_norm_temp: float = -1.,
+            global_pruning: str = 'none', # none, st, sup
     ) -> List[Hypothesis]:
         """run beam search to decode
         Parameters
@@ -419,14 +420,15 @@ class DecodeModel(pl.LightningModule):
         -------
         List[Hypothesis]: [batch_size,]
         """
-        GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS = [
-            # (30, 0.1),
-            # (30, 0.8),
-            # (60, 0.1),
-        ]
+        GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS = {
+            'none': [],
+            'sup': [(15, 0.8), (30, 0.4), (60, 0.1), (400, 0.05)],
+            'st': [(30, 0.1), (400, 0.05)]
+        }
+        assert global_pruning in GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS;
 
         global_pruning_threshold = invalid_score
-        for (epoch, threshold) in GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS:
+        for (epoch, threshold) in GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS[global_pruning]:
             if self.current_epoch <= epoch:
                 global_pruning_threshold = threshold
                 break

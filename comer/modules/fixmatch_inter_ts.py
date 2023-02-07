@@ -15,7 +15,6 @@ from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out, Hypothesis)
 
 
-
 class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
     def __init__(
@@ -31,7 +30,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         self.verbose_temp_scale = val
 
     def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0) -> Tuple[
-        Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]
+        Tensor, Tuple[LongTensor, FloatTensor, List[List[int]]]
     ]:
         tgt, out, _, _ = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
@@ -63,22 +62,23 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
         return (
             loss,
-            # TODO: finally abstract the hyp conf score function away
-            (out, out_hat, [h.score / 2 for h in hyps], [h.seq for h in hyps], l2r_labels)
+            (out, out_hat, l2r_labels)
         )
 
     def approximate_joint_search(
             self, img: FloatTensor, mask: LongTensor, use_new: bool = True,
-            save_logits: bool = False, debug=False, temperature=None
+            save_logits: bool = False, debug=False, temperature=None, global_pruning: str = None
     ) -> List[Hypothesis]:
         if temperature is None:
             temperature = self.current_temperature.item()
         hp = dict(self.hparams)
+        if global_pruning is None:
+            global_pruning = self.hparams['global_pruning_mode']
         if "temperature" in hp:
             del hp["temperature"]
         return self.comer_model.new_beam_search(
             img, mask, **hp, scoring_run=True, bi_dir=True,
-            save_logits=save_logits, debug=debug, temperature=temperature
+            save_logits=save_logits, debug=debug, temperature=temperature, global_pruning=global_pruning
         )
 
     def process_out_hat(self, out_hat):
@@ -104,23 +104,14 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
             all_labels_append = all_labels.append
             all_logits = []
             all_logits_append = all_logits.append
-            correct_scores = []
-            correct_scores_append = correct_scores.append
-            incorrect_scores = []
-            incorrect_scores_append = incorrect_scores.append
             for single_gpu_outputs in all_gpu_labels:
                 for single_gpu_step_output in single_gpu_outputs:
-                    out, out_hat, scores, seqs, labels = single_gpu_step_output[1]
+                    out, out_hat, labels = single_gpu_step_output[1]
                     flat = rearrange(out, "b l -> (b l)")
                     out_hat = self.process_out_hat(out_hat.to(self.device))
                     flat_hat = rearrange(out_hat, "b l e -> (b l) e")
                     all_labels_append(flat.to(self.device))
                     all_logits_append(flat_hat)
-                    for i, label in enumerate(labels):
-                        if label == seqs[i]:
-                            correct_scores_append(scores[i])
-                        else:
-                            incorrect_scores_append(scores[i])
             labels = torch.cat(all_labels)
             logits = torch.cat(all_logits)
 
@@ -141,12 +132,12 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                 optimizer = optim.LBFGS([current_temperature], lr=0.01, max_iter=200)
                 def eval_curr_temp():
                     optimizer.zero_grad()
-                    # loss = ece_criterion(logits / torch.abs(current_temperature), labels) \
-                    #        + 3 * F.cross_entropy(logits / torch.abs(current_temperature), labels,
-                    #                          ignore_index=vocab.PAD_IDX, reduction="mean")
+                    loss = ece_criterion(logits / torch.abs(current_temperature), labels) \
+                           + 3 * F.cross_entropy(logits / torch.abs(current_temperature), labels,
+                                             ignore_index=vocab.PAD_IDX, reduction="mean")
                     # loss = ce_logitnorm_loss(logits / current_temperature, labels)
-                    loss = F.cross_entropy(logits / torch.abs(current_temperature), labels,
-                                           ignore_index=vocab.PAD_IDX, reduction="mean")
+                    # loss = F.cross_entropy(logits / torch.abs(current_temperature), labels,
+                    #                        ignore_index=vocab.PAD_IDX, reduction="mean")
                     loss.backward()
                     return loss
 
@@ -161,7 +152,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                     logging.info(f'Optimal temperature: {torch.abs(current_temperature).item():.3f}')
                     logging.info(f'After temperature - NLL: {after_temperature_nll:.3f}, ECE: {after_temperature_ece:.3f}')
 
-                if self.local_rank == 0:
+                if self.local_rank == 0 and self.logger is not None:
                     tb_logger: SummaryWriter = self.logger.experiment
                     tb_logger.add_scalar(
                         "temperature_scaling_result",
