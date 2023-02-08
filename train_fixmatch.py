@@ -41,7 +41,7 @@ POSSIBLE_CP_SHORTCUTS = {
     's_15': './lightning_logs/version_89/checkpoints/epoch=363-step=81536-val_ExpRate=0.4078.ckpt',
     's_15_ln': './lightning_logs/version_86/checkpoints/epoch=165-step=37184-val_ExpRate=0.3344.ckpt',
     's_25': './lightning_logs/version_17/checkpoints/epoch=209-step=78120-val_ExpRate=0.5063.ckpt',
-    's_25_ln': './lightning_logs/version_131/checkpoints/TODO.ckpt',
+    's_25_ln': './lightning_logs/version_131/checkpoints/ep=268-st=100068-loss=0.5298-exp=0.4796.ckpt',
 
     's_35': './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt',
     's_35_ln': './lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt',
@@ -69,6 +69,13 @@ LEARNING_PROFILES = {
         'steplr_steps': 8,
         'check_val_every_n_epoch': 2
     },
+    'initial_bigger_steps': {
+        'epochs': 400,
+        'learning_rate': 0.15,
+        'learning_rate_target': 8e-4,
+        'steplr_steps': 5,
+        'check_val_every_n_epoch': 2
+    },
     'st': {
         'epochs': 400,
         'learning_rate': 0.02,
@@ -81,9 +88,9 @@ PARTIAL_LABEL_PROFILES = {
     'high': {
         'partial_labeling_enabled': True,
         'partial_labeling_only_below_normal_threshold': True,
-        'partial_labeling_min_conf': 0.05,
+        'partial_labeling_min_conf': 0.00,
         'partial_labeling_std_fac': 0.0,
-        'partial_labeling_std_fac_fade_conf_exp': 2.0,
+        'partial_labeling_std_fac_fade_conf_exp': 0.0,
     },
     'med': {
         'partial_labeling_enabled': True,
@@ -106,6 +113,20 @@ AVAILABLE_DATAMODULES = {
     'ora': CROHMEFixMatchOracleDatamodule,
     'fx': CROHMEFixMatchInterleavedDatamodule
 }
+# GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS = {
+#     'none': [],
+#     'sup': [(15, 0.8), (30, 0.4), (60, 0.1), (400, 0.05)],
+#     'st': [(30, 0.1), (400, 0.05)],
+#     'st2': [(30, 0.3), (400, 0.15)],
+#     'partial': [(400, 0.05)],
+# }
+VALID_GLOBAL_PRUNING_MODES = [
+    'none',
+    'sup',
+    'st',
+    'st2',
+    'partial',
+]
 
 def main(
         gpu: int,
@@ -120,13 +141,15 @@ def main(
         dm: str = 'sup',
         learn: str = 'initial',
         lntemp: float = 0.1,
-        conf: str = 'ori'
+        conf: str = 'ori',
+        gprune: str = 'ori'
 ):
 
     assert model in AVAILABLE_MODELS
     assert dm in AVAILABLE_DATAMODULES
     assert learn in LEARNING_PROFILES
     assert conf in CONF_MEASURES
+    assert gprune in VALID_GLOBAL_PRUNING_MODES;
 
     cp_addition = ''
 
@@ -248,6 +271,7 @@ def main(
         'pseudo_labeling_threshold': thresh,
         'keep_old_preds': keeppreds,  # Fixed-Percent Self-Training
         'lambda_u': lu,
+        'global_pruning_mode': gprune
     }
 
     if model != 'sup':
@@ -260,6 +284,8 @@ def main(
         kwargs['logit_norm_temp'] = lntemp
     if is_partial:
         kwargs.update(**PARTIAL_LABEL_PROFILES[pprof])
+        if pmthresh is not None:
+            kwargs["partial_labeling_min_conf"] = pmthresh
 
     if len(cp):
         kwargs['strict'] = False

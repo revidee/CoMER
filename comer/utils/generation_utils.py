@@ -423,9 +423,11 @@ class DecodeModel(pl.LightningModule):
         GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS = {
             'none': [],
             'sup': [(15, 0.8), (30, 0.4), (60, 0.1), (400, 0.05)],
-            'st': [(30, 0.1), (400, 0.05)]
+            'st': [(30, 0.1), (400, 0.05)],
+            'st2': [(30, 0.3), (400, 0.15)],
+            'partial': [(400, 0.05)],
         }
-        assert global_pruning in GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS;
+        assert global_pruning in GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS
 
         global_pruning_threshold = invalid_score
         for (epoch, threshold) in GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS[global_pruning]:

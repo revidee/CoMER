@@ -1,8 +1,9 @@
 import math
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Callable
 import ntpath
 from zipfile import ZipFile
 
+import matplotlib
 import numpy as np
 import torch
 from jsonargparse import CLI
@@ -19,13 +20,44 @@ from comer.utils.utils import Hypothesis
 SEP: str = ','
 
 
-def main():
+def main(save: bool = False):
     device = torch.device('cpu')
     with ZipFile("data.zip") as archive:
         seed_everything(7)
 
         calc_ece = True
-        calc_name = "plots_35_single"
+        calc_name = "ece_plot_35_ce_ln_ts_comp"
+
+        font_size = 12
+        dpi = 96
+        # fig_size_px = (1920, 540)
+        fig_size_px = (1920, 1080)
+
+        def hyp_to_triplet_with_scoring(sfn: Callable[[Hypothesis], float], oracle: Oracle):
+            def hyp_to_triplet(tuple: [str, Hypothesis]):
+                seq_len = len(tuple[1].seq)
+                return np.exp(sfn(tuple[1])) if seq_len else 0.0, tuple[1].seq, oracle.get_gt_indices(tuple[0])
+            return hyp_to_triplet
+
+        scoring_fns = [
+            ('ORI', score_ori),
+            # ('BIAVG', score_bi_avg),
+            ('BIMIN', score_bimin),
+            # ('MULT', score_sum),
+            ('BIMULT', score_bisum)
+        ]
+
+        all_hyp_cps = [
+            ("35% Baseline", "../hyps_s_35_new_original_1.pt",),
+            # ("100% Supervised", "../hyps_s_100_new_original_test.pt",),
+            # ("TS CE", "../hyps_s_35_new_original_ts_ce.pt"),
+            # ("TS ECE", "../hyps_s_35_new_original_ts_ece.pt"),
+            ("CE + TS", "../hyps_s_35_new_original_ts_both.pt"),
+            ("LN + TS", "../hyps_s_35_new_t0_1_opt.pt"),
+            # ("TS CE+ECE", "../hyps_s_35_new_original_ts_both.pt"),
+        ]
+
+
 
         if calc_ece:
 
@@ -35,67 +67,13 @@ def main():
                                                                                           to_device=device)
             oracle = Oracle(full_data)
             oracle.add_data(full_data_test)
-            all_hyps: List[Dict[str, Hypothesis]] = []
-
-            all_hyps.append(torch.load("../hyps_s_35_new_original_1.pt",
-                                       map_location=torch.device('cpu')))
-            # all_hyps.append(torch.load("../hyps_s_35_new_original_ts_ce.pt",
-            #                            map_location=torch.device('cpu')))
-            # all_hyps.append(torch.load("../hyps_s_35_new_original_ts_ece.pt",
-            #                            map_location=torch.device('cpu')))
-            # all_hyps.append(torch.load("../hyps_s_35_new_original_ts_both.pt",
-            #                            map_location=torch.device('cpu')))
+            all_hyps: List[Dict[str, Hypothesis]] = [torch.load(cp, map_location=torch.device('cpu')) for (_, cp) in all_hyp_cps]
 
             ece = ECELoss()
 
-            def hyp_to_triplet_ori(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp(score_ori(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            def hyp_to_triplet_avg(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp(score_sum(hyp) / hyp_len) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            def hyp_to_triplet_rev_avg(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (
-                math.exp(score_rev_sum(hyp) / hyp_len) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            def hyp_to_triplet_biavg(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp((score_sum(hyp) + score_rev_sum(hyp) / 2) / hyp_len) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            def hyp_to_triplet_bimin(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp(score_bimin(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            def hyp_to_triplet_mult(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp(score_sum(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            def hyp_to_triplet_bimult(fname_and_hyp: Tuple[str, Hypothesis]):
-                fname, hyp = fname_and_hyp
-                hyp_len = len(hyp.seq)
-                return (math.exp(score_bisum(hyp)) if hyp_len > 0 else 0, hyp.seq, oracle.get_gt_indices(fname))
-
-            scoring_fns = [
-                # hyp_to_triplet_ori,
-                # hyp_to_triplet_biavg,
-                # hyp_to_triplet_rev_avg,
-                hyp_to_triplet_bimin,
-                # hyp_to_triplet_mult,
-                # hyp_to_triplet_bimult
-            ]
-
             plots = [
                 [
-                    ece.get_plot_bins(map(scoring_fn, hyps.items())) for scoring_fn in scoring_fns
+                    ece.get_plot_bins(map(hyp_to_triplet_with_scoring(scoring_fn[1], oracle), hyps.items())) for scoring_fn in scoring_fns
                 ] for hyps in all_hyps
             ]
 
@@ -103,26 +81,22 @@ def main():
         else:
             plots = torch.load(f"{calc_name}.pt", map_location=device)
 
-        titles = [
-            # "ORI",
-            # "BIAVG",
-            # "REV_AVG",
-            "BIMIN",
-            # "MULT",
-            # "BIMULT"
-        ]
-        all_hyp_titles = [
-            "35% Supervised",
-            # "TS CE",
-            # "TS ECE",
-            # "TS CE+ECE",
-        ]
 
-        fig, axes = plt.subplots(len(plots), len(plots[0]), sharey=True, sharex=True)
+        matplotlib.rcParams.update({'font.size': font_size})
+
+        for font_file in matplotlib.font_manager.findSystemFonts():
+            matplotlib.font_manager.fontManager.addfont(font_file)
+
+
+
+        fig, axes = plt.subplots(len(plots), len(plots[0]), sharey=True, sharex=True, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
         fig.tight_layout(w_pad=-0.5, h_pad=0.)
+
+        plt.gcf().subplots_adjust(left=0.05, top=0.95)
 
         linewidth = 0.5
         edgecolor = "#444444"
+
 
         def get_ax(row_idx, col_idx):
             if len(plots) == 1:
@@ -163,32 +137,41 @@ def main():
                         i * width + width / 2,
                         0.05,
                         f"{samples[i]}",
-                        fontdict={'fontsize': 7},
+                        # fontdict={'fontfamily': 'Iosevka'},
                         ha="center",
                         bbox={
                             "boxstyle": "Round, pad=0.05, rounding_size=0.1",
                             "color": (1, 1, 1, 0.8),
                         }
                     )
-                ax.set_xticks([(((i + 1) / len(accs))) for i in range(len(accs))], labels=samples)
+                ax.set_xticks([(((i + 1) / len(accs))) for i in range(len(accs))])
                 # labels = [f"{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
                 # labels = [f"{(i+1)/len(accs):.2f})\n{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
                 # labels[-1] = f"1.0]\n{samples[-1]}"
-                ax.set_xticklabels([f"{(((i + 1) / len(accs))):.2f}" for i in range(len(accs))], rotation=0,
-                                   fontdict={'fontsize': 8})
+                ax.set_xticklabels(
+                    [f"{(((i + 1) / len(accs))):.2f}" for i in range(len(accs))], rotation=0
+                    # , fontdict={'fontfamily': 'Iosevka'}
+                )
 
                 ax.text(.035, 0.85, f"ECE={ece * 100:.1f}", backgroundcolor=(0.5, 0.5, 0.5, 0.5))
                 ax.set_xlim((0, 1.0))
                 ax.set_ylim((0, 1.0))
-        for col_idx, title in enumerate(titles):
+        for col_idx, (title, _) in enumerate(scoring_fns):
             get_ax(0, col_idx).set_title(title)
-            get_ax(len(all_hyp_titles) - 1, col_idx).set_xlabel("Confidence")
-        for i, title in enumerate(all_hyp_titles):
+            get_ax(len(all_hyp_cps) - 1, col_idx).set_xlabel("Confidence")
+        for i, (title, _) in enumerate(all_hyp_cps):
             get_ax(i, 0).set_ylabel(f"{title}\nExpRate-0")
-        get_ax(0, 0).text(0.075, 0.975, "Overconfidence", backgroundcolor="#e83429dd", ha="left", transform=plt.gcf().transFigure)
-        get_ax(0, len(titles) - 1).text(0.96, 0.975, "Underconfidence", backgroundcolor="#157f3bdd", ha="right", transform=plt.gcf().transFigure)
+        first_bb = get_ax(0, 0).get_position()
+        last_bb = get_ax(0, len(scoring_fns) - 1).get_position()
+        Y_PADDING_CONF = 9
+        X_PADDING_CONF = 6
+        get_ax(0, 0).text(first_bb.xmin + (X_PADDING_CONF / fig_size_px[0]), first_bb.ymax + (Y_PADDING_CONF / fig_size_px[1]), "Overconfidence", backgroundcolor="#e83429dd", ha="left", va='bottom', transform=plt.gcf().transFigure)
+        get_ax(0, len(scoring_fns) - 1).text(last_bb.xmax - (X_PADDING_CONF / fig_size_px[0]), last_bb.ymax + (Y_PADDING_CONF / fig_size_px[1]), "Underconfidence", backgroundcolor="#157f3bdd", ha="right", va='bottom', transform=plt.gcf().transFigure)
 
-        plt.show()
+        if save:
+            plt.savefig(f'{calc_name}.pdf', format='pdf')
+        else:
+            plt.show()
 
 
 if __name__ == '__main__':

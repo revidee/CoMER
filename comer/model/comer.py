@@ -128,6 +128,7 @@ class CoMER(pl.LightningModule):
             debug: bool = False,
             save_logits: bool = False,
             logit_norm_temp: float = -1.,
+            global_pruning: str = 'none',
             **kwargs,
     ) -> List[Hypothesis]:
         """run bi-direction beam search for given img
@@ -149,5 +150,5 @@ class CoMER(pl.LightningModule):
         return self.decoder.new_beam_search(
             feature, mask, beam_size, max_len, alpha, early_stopping,
             temperature, bi_dir=bi_dir, scoring_run=scoring_run, debug=debug, save_logits=save_logits,
-            logit_norm_temp=logit_norm_temp
+            logit_norm_temp=logit_norm_temp, global_pruning=global_pruning
         )

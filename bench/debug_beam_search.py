@@ -131,22 +131,25 @@ def main(gpu: int = -1):
             # )
 
             # eval_sorting_score(oracle, True, 1.0, True)
+            font_size = 28
+            dpi = 96
+            fig_size_px = (1920, 1080)
+            matplotlib.rcParams.update({'font.size': font_size})
+            fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
 
-            fig, axes = plt.subplots(1)
-
-            hyps_base = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
+            hyps_base = torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu'))
             # hyps_base = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
             # hyps_ln = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
 
 
-            calc_tp_as_all_correct = False
+            calc_tp_as_all_correct = True
 
             # BIMIN, 3.5, partial 0
 
             for (all_hyps, name, fn, partial_mode, fac, threshold, min_threshold, color) in [
-                (hyps_base, "BIMIN", score_bimin, 0, None, 0.0, 0.0, matplotlib.colormaps['Reds'](0.6)),
                 (hyps_base, "ORI", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Greens'](0.6)),
-                (hyps_base, "BIAVG", score_bi_avg, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.6)),
+                (hyps_base, "BIMIN", score_bimin, 0, None, 0.0, 0.0, matplotlib.colormaps['Reds'](0.6)),
+                (hyps_base, "BIMULT", score_bisum, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.6)),
                 # (hyps_ln, "ORI LN", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.9)),
                 # (hyps_ln, "ORI LN", score_ori, 0, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.7)),
                 # (hyps_ln, "ORI LN", score_ori, 5, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.6)),
@@ -171,9 +174,9 @@ def main(gpu: int = -1):
                 visual = metrics.PrecisionRecallDisplay(precisions, recalls)
                 # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
                 # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
-                visual.plot(ax=axes, name=f"{name} AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
+                visual.plot(ax=axes, name=f"{name} AP {auc*100:.2f}", color=color, linewidth=2)
 
-            plt.show()
+            plt.savefig("ap_plot_3_confs_35_test.pdf", format="pdf")
 
             # hyps_s_35_new_original_1.pt
 

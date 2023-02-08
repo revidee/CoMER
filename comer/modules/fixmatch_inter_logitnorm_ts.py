@@ -83,7 +83,7 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
         return out_hat
 
     def validation_step(self, batch: Batch, batch_idx, dataloader_idx=0) -> Tuple[
-        Tensor, Tuple[LongTensor, FloatTensor, List[float], List[List[int]], List[List[int]]]
+        Tensor, Tuple[LongTensor, FloatTensor, List[List[int]]]
     ]:
         tgt, out, _, _ = to_bi_tgt_out(batch.labels, self.device)
         out_hat = self(batch.imgs, batch.mask, tgt)
@@ -116,6 +116,5 @@ class CoMERFixMatchInterleavedLogitNormTempScale(CoMERFixMatchInterleavedTempera
 
         return (
             loss,
-            # TODO: finally abstract the hyp conf score function away
-            (out, out_hat, [h.score / 2 for h in hyps], [h.seq for h in hyps], l2r_labels)
+            (out, out_hat, l2r_labels)
         )
