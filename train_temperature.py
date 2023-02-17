@@ -39,7 +39,9 @@ if __name__ == '__main__':
         # ("./lightning_logs/version_71/checkpoints/epoch=197-step=52074-val_ExpRate=0.5321.ckpt"),
         # ("./lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt"),
         # ("./lightning_logs/version_21/checkpoints/epoch=289-step=64960-val_ExpRate=0.3628.ckpt"),
-        ("./lightning_logs/version_128/checkpoints/epoch=234-step=178365-val_loss=0.3255.ckpt"),
+        # ("./lightning_logs/version_128/checkpoints/epoch=234-step=178365-val_loss=0.3255.ckpt"),
+        ("./lightning_logs/version_16/checkpoints/epoch=275-step=209484-val_ExpRate=0.5947.ckpt"),
+        ("./lightning_logs/version_17/checkpoints/epoch=209-step=78120-val_ExpRate=0.5063.ckpt"),
     ]
 
     for cp_path in cps:
@@ -47,7 +49,7 @@ if __name__ == '__main__':
         trainer = UnlabeledValidationExtraStepTrainer(
             unlabeled_val_loop=True,
             accelerator='gpu',
-            devices=[2],
+            devices=[0],
             strategy=DDPUnlabeledStrategy(find_unused_parameters=False),
             deterministic=True,
             precision=32,
@@ -85,6 +87,7 @@ if __name__ == '__main__':
             # logit_norm_temp=0.05,
         )
         model.set_verbose_temp_scale_optim(True)
+        model.validation_global_pruning_overwrite = 'none'
 
         with ZipFile("data.zip") as f:
             trainer.validate(model, DataLoader(

@@ -5,7 +5,8 @@
 #   [-o,--out-dir <dir-path: string>] (optional, def: ./eval_out) - Directory in which all results will be copied to
 #   [-d,--data-dir: <dir-path: string>] (optional, def: ./data) - Data directory of the unzipped data.zip
 #   [-gpu,--gpu: <idx: int>] (optional, def: 0) - index of the cuda device to use
-
+#   [-aug,--augmentation: <aug_mode: string>] (optional, def: '') - augmentation to apply to the test set, defaults to none
+#   [-m,--model: <model_name: string>] (optional, def: sup) - the model instance to load. Available models are listed in model_lookups.py.
 
 
 
@@ -44,6 +45,11 @@ while [[ $# -gt 0 ]]; do
         shift # past argument
         shift # past value
         ;;
+    -m|--model)
+        model="$2"
+        shift # past argument
+        shift # past value
+        ;;
     -s|--seed)
       seed="$2"
       shift # past argument
@@ -61,6 +67,11 @@ while [[ $# -gt 0 ]]; do
 done
 
 set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
+
+
+data_dir=$(readlink -f $data_dir)
+out_dir=$(readlink -f $out_dir)
+chk_point_path=$(readlink -f $chk_point_path)
 
 if [ -z "$chk_point_path" ]; then
   echo "fatal: checkpoint path not given";
@@ -82,6 +93,12 @@ else
   aug="--aug "$aug""
 fi
 
+if [ -z "$model" ]; then
+  model=""
+else
+  model="--model "$model""
+fi
+
 if [ -z "$data_dir" ]; then
   data_dir='./data'
 fi
@@ -96,16 +113,12 @@ if ! [[ $gpu =~ $single_num_regex ]] ; then
    exit 1
 fi
 
-data_dir=$(readlink -f $data_dir)
-out_dir=$(readlink -f $out_dir)
-chk_point_path=$(readlink -f $chk_point_path)
-
 # clean out
 rm -rf $out_dir/test_temp/
 rm -rf $out_dir/Results_pred_symlg/
 
 # generate predictions
-python -m scripts.test.test $chk_point_path --year $test_year --gpu $gpu --seed $seed $aug
+python -m scripts.test.test $chk_point_path --year $test_year --gpu $gpu --seed $seed $aug $model
 
 mkdir -p $out_dir/test_temp/
 mv result$gpu.zip $out_dir/$test_year.zip

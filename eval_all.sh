@@ -6,7 +6,10 @@
 #   [-d,--data-dir: <dir-path: string>] (optional, def: ./data) - Data directory of the unzipped data.zip
 #   [-gpu,--gpu: <idx: int>] (optional, def: 0) - index of the cuda device to use
 #   [-p,--pandoc: <file-path: string>] (optional, def: pandoc) - path to the pandoc executable, if it needs to be overwritten
-
+#   [-aug,--augmentation: <aug_mode: string>] (optional, def: '') - augmentation to apply to the test set, defaults to none
+#   [-m,--model: <model_name: string>] (optional, def: sup) - the model instance to load. Available models are listed in model_lookups.py.
+# Example:
+# ./eval_all.sh -cp ./lightning_logs/version_14/checkpoints/epoch=209-step=238770-val_ExpRate=0.6230.ckpt -o ./eval/version_14 -d /data -gpu 1
 POSITIONAL_ARGS=()
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -42,6 +45,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     -aug|--augmentation)
       aug="$2"
+      shift # past argument
+      shift # past value
+      ;;
+    -m|--model)
+      model="$2"
       shift # past argument
       shift # past value
       ;;
@@ -81,6 +89,12 @@ else
   aug="-aug "$aug""
 fi
 
+if [ -z "$model" ]; then
+  model=""
+else
+  model="-m "$model""
+fi
+
 single_num_regex='^[0-9]$'
 if ! [[ $gpu =~ $single_num_regex ]] ; then
    echo "fatal: given gpu index is not a single number (expected a device id, eg for cuda:0, \"0\")." >&2;
@@ -105,7 +119,7 @@ export PATH=$PATH:$LgEvalDir/bin:$Convert2SymLGDir
 for year in '2014' '2016' '2019'
 do
     echo '****************' start evaluating CROHME $year '****************'
-    bash $parent_path/scripts/test/eval.sh -cp $checkpoint_path -o $out_dir -d $data_dir -y $year -gpu $gpu -s $seed $aug
+    bash $parent_path/scripts/test/eval.sh -cp $checkpoint_path -o $out_dir -d $data_dir -y $year -gpu $gpu -s $seed $aug $model
     echo
 done
 

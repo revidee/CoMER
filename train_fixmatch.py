@@ -13,46 +13,9 @@ from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme.variants.fixmatch_inter_oracle import CROHMEFixMatchOracleDatamodule
 from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
-from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale, CoMERFixMatchInterleavedTemperatureScaling, \
-    CoMERFixMatchInterleavedFixedPctTemperatureScaling, CoMERFixMatchOracleInterleavedTempScale, \
-    CoMERFixMatchInterleavedFixedPctLogitNormTempScale, CoMERSupervised, CoMERFixMatchInterleaved, \
-    CoMERFixMatchOracleInterleaved, CoMERFixMatchInterleavedFixedPct
-from comer.modules.fixmatch_inter_logitnorm_ts_oracle import CoMERFixMatchOracleInterleavedLogitNormTempScale
+
 from comer.utils.conf_measures import CONF_MEASURES
-
-AVAILABLE_MODELS = {
-    'sup': CoMERSupervised,
-    'fx': CoMERFixMatchInterleaved,
-    'fx_fixed': CoMERFixMatchInterleavedFixedPct,
-
-    'fx_ts': CoMERFixMatchInterleavedTemperatureScaling,
-    'fx_ts_fixed': CoMERFixMatchInterleavedFixedPctTemperatureScaling,
-
-    'fx_ora': CoMERFixMatchOracleInterleaved,
-    'fx_ora_ts': CoMERFixMatchOracleInterleavedTempScale,
-
-    'ln_ts': CoMERFixMatchInterleavedLogitNormTempScale,
-    'ln_ts_fixed': CoMERFixMatchInterleavedFixedPctLogitNormTempScale,
-    'ln_ora_ts': CoMERFixMatchOracleInterleavedLogitNormTempScale
-}
-
-POSSIBLE_CP_SHORTCUTS = {
-    'syn': './lightning_logs/version_77/checkpoints/epoch=41-step=236712-val_ExpRate=0.9099.ckpt',
-    's_15': './lightning_logs/version_89/checkpoints/epoch=363-step=81536-val_ExpRate=0.4078.ckpt',
-    's_15_ln': './lightning_logs/version_86/checkpoints/epoch=165-step=37184-val_ExpRate=0.3344.ckpt',
-    's_25': './lightning_logs/version_17/checkpoints/epoch=209-step=78120-val_ExpRate=0.5063.ckpt',
-    's_25_ln': './lightning_logs/version_131/checkpoints/ep=268-st=100068-loss=0.5298-exp=0.4796.ckpt',
-
-    's_35': './lightning_logs/version_25/checkpoints/epoch=293-step=154644-val_ExpRate=0.5488.ckpt',
-    's_35_ln': './lightning_logs/version_66/checkpoints/epoch=291-step=76796-val_ExpRate=0.5338.ckpt',
-    's_50': './lightning_logs/version_16/checkpoints/epoch=275-step=209484-val_ExpRate=0.5947.ckpt',
-    's_50_ln': './lightning_logs/version_126/checkpoints/epoch=251-step=191268-val_ExpRate=0.6047.ckpt',
-    's_75': './lightning_logs/version_14/checkpoints/epoch=209-step=238770-val_ExpRate=0.6230.ckpt',
-    's_100': './lightning_logs/version_0/checkpoints/epoch=151-step=57151-val_ExpRate=0.6365.ckpt',
-
-    'syn_15': './lightning_logs/version_88/checkpoints/ep=145-st=32704-valExpRate=0.4987.ckpt',
-    'syn_15_ln': './lightning_logs/version_109/checkpoints/ep=245-st=55104-loss=0.4297-exp=0.5154.ckpt',
-}
+from model_lookups import AVAILABLE_MODELS, POSSIBLE_CP_SHORTCUTS
 
 LEARNING_PROFILES = {
     'initial': {
@@ -83,6 +46,13 @@ LEARNING_PROFILES = {
         'steplr_steps': 8,
         'check_val_every_n_epoch': 2
     },
+    'st2': {
+        'epochs': 250,
+        'learning_rate': 0.01,
+        'learning_rate_target': 4e-4,
+        'steplr_steps': 5,
+        'check_val_every_n_epoch': 2
+    }
 }
 PARTIAL_LABEL_PROFILES = {
     'high': {
@@ -95,16 +65,16 @@ PARTIAL_LABEL_PROFILES = {
     'med': {
         'partial_labeling_enabled': True,
         'partial_labeling_only_below_normal_threshold': True,
-        'partial_labeling_min_conf': 0.05,
+        'partial_labeling_min_conf': 0.1,
         'partial_labeling_std_fac': 3.5,
         'partial_labeling_std_fac_fade_conf_exp': 2.0,
     },
     'low': {
         'partial_labeling_enabled': True,
         'partial_labeling_only_below_normal_threshold': True,
-        'partial_labeling_min_conf': 0.05,
-        'partial_labeling_std_fac': 3.5,
-        'partial_labeling_std_fac_fade_conf_exp': 2.0,
+        'partial_labeling_min_conf': 0.3,
+        'partial_labeling_std_fac': 5.5,
+        'partial_labeling_std_fac_fade_conf_exp': 1.0,
     }
 }
 
@@ -142,7 +112,7 @@ def main(
         learn: str = 'initial',
         lntemp: float = 0.1,
         conf: str = 'ori',
-        gprune: str = 'ori'
+        gprune: str = 'ori',
 ):
 
     assert model in AVAILABLE_MODELS
@@ -219,12 +189,12 @@ def main(
                             filename=f'ep={{epoch}}-st={{step}}-loss={{val_loss{monitor_suffix}:.4f}}-exp={{val_ExpRate{monitor_suffix}:.4f}}',
                             auto_insert_metric_name=False
                             ),
-            ModelCheckpoint(save_top_k=1,
-                            monitor=f'val_loss{monitor_suffix}',
-                            mode='min',
-                            filename=f'ep={{epoch}}-st={{step}}-loss={{val_loss{monitor_suffix}:.4f}}-exp={{val_ExpRate{monitor_suffix}:.4f}}',
-                            auto_insert_metric_name=False
-                            ),
+            # ModelCheckpoint(save_top_k=1,
+            #                 monitor=f'val_loss{monitor_suffix}',
+            #                 mode='min',
+            #                 filename=f'ep={{epoch}}-st={{step}}-loss={{val_loss{monitor_suffix}:.4f}}-exp={{val_ExpRate{monitor_suffix}:.4f}}',
+            #                 auto_insert_metric_name=False
+            #                 ),
         ],
         precision=32,
         sync_batchnorm=True

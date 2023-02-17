@@ -23,7 +23,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
     ):
         super().__init__(**kwargs)
         self.save_hyperparameters()
-        self.register_buffer("current_temperature", torch.ones(1) * 1.5, True)
+        self.register_buffer("current_temperature", torch.ones(1) * 1.0, True)
         self.verbose_temp_scale = False
 
     def set_verbose_temp_scale_optim(self, val: bool):
@@ -72,7 +72,9 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
         if temperature is None:
             temperature = self.current_temperature.item()
         hp = dict(self.hparams)
-        if global_pruning is None:
+        if self.validation_global_pruning_overwrite is not None:
+            global_pruning = self.validation_global_pruning_overwrite
+        elif global_pruning is None:
             global_pruning = self.hparams['global_pruning_mode']
         if "temperature" in hp:
             del hp["temperature"]

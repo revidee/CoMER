@@ -64,6 +64,7 @@ class CoMERSupervised(pl.LightningModule):
         )
 
         self.exprate_recorder = ExpRateRecorder()
+        self.validation_global_pruning_overwrite = None
     def forward(
         self, img: FloatTensor, img_mask: LongTensor, tgt: LongTensor,
             l2r_indices: Union[LongTensor, None] = None, r2l_indices: Union[LongTensor, None] = None
@@ -148,7 +149,9 @@ class CoMERSupervised(pl.LightningModule):
     ) -> List[Hypothesis]:
         if temperature is None:
             temperature = 1
-        if global_pruning is None:
+        if self.validation_global_pruning_overwrite is not None:
+            global_pruning = self.validation_global_pruning_overwrite
+        elif global_pruning is None:
             global_pruning = self.hparams['global_pruning_mode']
         hp = dict(self.hparams)
         if "temperature" in hp:

@@ -131,52 +131,106 @@ def main(gpu: int = -1):
             # )
 
             # eval_sorting_score(oracle, True, 1.0, True)
+
+
+
             font_size = 28
             dpi = 96
+            # dpi = 120
             fig_size_px = (1920, 1080)
             matplotlib.rcParams.update({'font.size': font_size})
-            fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
+            # fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
 
-            hyps_base = torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu'))
+            # hyps_base = torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu'))
+            # hyps_base = torch.load("../hyps_s_35_new_original_ts_ce_test.pt", map_location=torch.device('cpu'))
+            # hyps_base = torch.load("../hyps_s_35_new_original_1.pt", map_location=torch.device('cpu'))
             # hyps_base = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
             # hyps_ln = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
 
 
-            calc_tp_as_all_correct = True
+            # calc_tp_as_all_correct = True
+            #
+            # # BIMIN, 3.5, partial 0
+            #
+            # for (all_hyps, name, fn, partial_mode, fac, threshold, min_threshold, color) in [
+            #     # (hyps_base, "ORI", score_ori, 5, 3.5, 0.5, 0.0, matplotlib.colormaps['Greens'](0.6)),
+            #     (hyps_base, "ORI", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Greens'](0.6)),
+            #     # (hyps_base, "BIMIN (Partial)", score_bimin, 0, 0.0, 0.6, 0.0, matplotlib.colormaps['Reds'](0.6)),
+            #     (hyps_base, "BIMIN", score_bimin, 0, None, 0.0, 0.0, matplotlib.colormaps['Reds'](0.6)),
+            #     # (hyps_base, "BIMULT", score_bisum, 5, 3.5, 0.5, 0.0, matplotlib.colormaps['Blues'](0.6)),
+            #     (hyps_base, "BIMULT", score_bisum, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.6)),
+            #     # (hyps_ln, "ORI LN", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.9)),
+            #     # (hyps_ln, "ORI LN", score_ori, 0, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.7)),
+            #     # (hyps_ln, "ORI LN", score_ori, 5, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.6)),
+            #     # (hyps_ln, "ORI LN", score_ori, 6, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.5)),
+            #     # (hyps_ln, "ORI LN", score_ori, 7, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.3)),
+            #     # ("BIMIN", score_bimin, 3, 0.8, matplotlib.colormaps['Greens']),
+            #     # ("BIAVG", score_bi_avg, 0, 0.6, matplotlib.colormaps['Greens']),
+            #     # ("BIMIN", score_bimin, 0, 0.6, matplotlib.colormaps['Blues']),
+            # ]:
+            #     threshold = (float('-Inf') if threshold == 0.0 else np.log(threshold))
+            #     min_threshold = float('-Inf') if min_threshold == 0.0 else np.log(min_threshold)
+            #     precisions, recalls, auc, skips, total = average_precision(
+            #         all_hyps,
+            #         fn,
+            #         oracle,
+            #         fac,
+            #         calc_tp_as_all_correct=calc_tp_as_all_correct,
+            #         partial_mode=partial_mode,
+            #         partial_threshold=threshold,
+            #         min_threshold=min_threshold
+            #     )
+            #     visual = metrics.PrecisionRecallDisplay(precisions, recalls)
+            #     # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
+            #     # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
+            #     visual.plot(ax=axes, name=f"{name} AP {auc*100:.2f}", color=color, linewidth=2)
+            # axes.set_ylim((0.52, 1.03))
+            # plt.savefig("ap_plot_3_confs_35_test_only_corr.pdf", format="pdf")
 
-            # BIMIN, 3.5, partial 0
 
-            for (all_hyps, name, fn, partial_mode, fac, threshold, min_threshold, color) in [
-                (hyps_base, "ORI", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Greens'](0.6)),
-                (hyps_base, "BIMIN", score_bimin, 0, None, 0.0, 0.0, matplotlib.colormaps['Reds'](0.6)),
-                (hyps_base, "BIMULT", score_bisum, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.6)),
-                # (hyps_ln, "ORI LN", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Blues'](0.9)),
-                # (hyps_ln, "ORI LN", score_ori, 0, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.7)),
-                # (hyps_ln, "ORI LN", score_ori, 5, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.6)),
-                # (hyps_ln, "ORI LN", score_ori, 6, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.5)),
-                # (hyps_ln, "ORI LN", score_ori, 7, 3.5, 0.93, 0.15, matplotlib.colormaps['Blues'](0.3)),
-                # ("BIMIN", score_bimin, 3, 0.8, matplotlib.colormaps['Greens']),
-                # ("BIAVG", score_bi_avg, 0, 0.6, matplotlib.colormaps['Greens']),
-                # ("BIMIN", score_bimin, 0, 0.6, matplotlib.colormaps['Blues']),
-            ]:
-                threshold = (float('-Inf') if threshold == 0.0 else np.log(threshold))
-                min_threshold = float('-Inf') if min_threshold == 0.0 else np.log(min_threshold)
-                precisions, recalls, auc, skips, total = average_precision(
-                    all_hyps,
-                    fn,
-                    oracle,
-                    fac,
-                    calc_tp_as_all_correct=calc_tp_as_all_correct,
-                    partial_mode=partial_mode,
-                    partial_threshold=threshold,
-                    min_threshold=min_threshold
-                )
-                visual = metrics.PrecisionRecallDisplay(precisions, recalls)
-                # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
-                # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
-                visual.plot(ax=axes, name=f"{name} AP {auc*100:.2f}", color=color, linewidth=2)
+            fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
+            lw = 2.5
 
-            plt.savefig("ap_plot_3_confs_35_test.pdf", format="pdf")
+            x =         [100,   75,     65,     55,     50,     40,     35,     30,     25,     20,     15]
+            exp_14 =    [57.00, 57.81,  56.29,  51.83,  52.53,  49.70,  48.28,  45.94,  43.81,  42.80,  37.12]
+            exp_16 =    [59.98, 58.06,  58.24,  55.71,  53.36,  53.36,  51.00,  48.82,  47.52,  44.99,  39.06]
+            exp_19 =    [63.39, 61.88,  61.05,  60.13,  59.22,  56.30,  54.55,  53.46,  50.46,  48.37,  40.53]
+
+            oracle_x = [75, 50, 25, 15]
+            oracle_14 = [56.29, 52.94, 48.78, 43.00]
+            oracle_16 = [57.8, 55.45, 50.04, 42.72]
+            oracle_19 = [62.64, 59.47, 54.55, 47.21]
+
+            axes.plot(x, exp_14, color=matplotlib.colormaps['Reds'](0.85), linewidth=lw, label='Supervised 2014')
+            # axes.plot(x, exp_16, color=matplotlib.colormaps['Blues'](0.85), linewidth=lw, label='Supervised 2016')
+            # axes.plot(x, exp_19, color=matplotlib.colormaps['Greens'](0.85), linewidth=lw, label='Supervised 2019')
+
+            axes.plot(oracle_x, oracle_14, color=matplotlib.colormaps['Reds'](0.45), linewidth=lw, label='FixMatch Oracle 2014')
+            # axes.plot(oracle_x, oracle_16, color=matplotlib.colormaps['Blues'](0.45), linewidth=lw, label='FixMatch Oracle 2016')
+            # axes.plot(oracle_x, oracle_19, color=matplotlib.colormaps['Greens'](0.45), linewidth=lw, label='FixMatch Oracle 2019')
+
+            axes.legend(loc='lower left')
+            axes.set_xlim((100, 15))
+            axes.set_ylim((0, 65))
+            axes.set_xticks(x)
+            # for (xpos, ypos) in zip(x, exp_14):
+            #     axes.annotate(f"{ypos:.2f}", (xpos, ypos), fontsize=12)
+            for (normal, oracle) in zip([exp_14], [oracle_14]):
+                for (xpos, ypos) in zip(oracle_x, oracle):
+                    other_idx = x.index(xpos)
+                    diff = (ypos - normal[other_idx])
+                    axes.annotate(f"{'+' if diff > 0 else ''}{diff:.2f}", (xpos, ypos), fontsize=12)
+            # labels = [f"{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
+            # labels = [f"{(i+1)/len(accs):.2f})\n{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
+            # labels[-1] = f"1.0]\n{samples[-1]}"
+            axes.set_xticklabels(
+                [f"{tick}" for tick in x], rotation=0
+                # , fontdict={'fontfamily': 'Iosevka'}
+            )
+            axes.set_xlabel('% Train')
+            axes.set_ylabel('ExpRate-0')
+            # plt.show()
+            plt.savefig("exprate_plot_baselines_14.pdf", format="pdf")
 
             # hyps_s_35_new_original_1.pt
 
@@ -1198,10 +1252,10 @@ def average_precision(hyps, scoring_fn, oracle,
     for (fname, hyp) in hyps.items():
         score = scoring_fn(hyp)
         if do_partial and score < threshold:
-            exp_score = np.exp(score * 2)
+            exp_score = np.exp(score)
             splitted_hyps.append(
                 partial_label(
-                    hyp, partial_std_fac * exp_score,
+                    hyp, partial_std_fac,
                     fname if use_oracle else None,
                     oracle if use_oracle else None,
                     partial_mode,
@@ -1210,9 +1264,6 @@ def average_precision(hyps, scoring_fn, oracle,
             )
         else:
             splitted_hyps.append((False, hyp.seq, None))
-
-
-
 
     if calc_tp_as_all_correct:
         cumulative_tp = 0
@@ -1234,7 +1285,6 @@ def average_precision(hyps, scoring_fn, oracle,
                 cumulative_tp += partial_bidir
     else:
         cumulative_tp = partial_bidir * len(splitted_scores_sorted)
-
     total_tp, cumulative_tp = cumulative_tp, 0
     cumulative_fp = 0
     precisions = []
@@ -1280,7 +1330,6 @@ def average_precision(hyps, scoring_fn, oracle,
 
         precisions.append(precision)
         recalls.append(recall)
-
     precisions = np.array(precisions)
     recalls = np.array(recalls)
     return precisions, recalls, metrics.auc(recalls, precisions), skipped_tokens, total_tokens
