@@ -1,5 +1,5 @@
 import math
-from typing import List, Union, Hashable, Sequence
+from typing import List, Union, Hashable, Sequence, Dict
 
 from comer.datamodules.crohme import DataEntry, vocab
 from Levenshtein import distance
@@ -16,8 +16,8 @@ def general_levenshtein(gt: Sequence[Hashable], pred: Sequence[Hashable]):
 
 class Oracle:
     def __init__(self, data: 'np.ndarray[Any, np.dtype[DataEntry]]'):
-        self.label_dict = {}
-        self.label_idx_dict = {}
+        self.label_dict: Dict[str, List[str]] = {}
+        self.label_idx_dict: Dict[str, List[int]] = {}
         self.add_data(data)
 
     def confidence_indices(self, fname: str, pred: List[int]):
@@ -26,11 +26,17 @@ class Oracle:
     def confidence_str(self, fname: str, pred: Union[List[str], str]):
         return _general_confidence(self.label_dict[fname], pred)
 
-    def levenshtein_indices(self, fname: str, pred: List[int]):
+    def levenshtein_indices(self, fname: str, pred: List[int]) -> int:
         return general_levenshtein(self.label_idx_dict[fname], pred)
 
-    def levenshtein_str(self, fname: str, pred: Union[List[str], str]):
+    def levenshtein_indices_nocutoff(self, fname: str, pred: List[int]) -> int:
+        return distance(self.label_idx_dict[fname], pred)
+
+    def levenshtein_str(self, fname: str, pred: Union[List[str], str]) -> int:
         return general_levenshtein(self.label_dict[fname], pred)
+
+    def levenshtein_str_nocutoff(self, fname: str, pred: Union[List[str], str]) -> int:
+        return distance(self.label_dict[fname], pred)
 
     def get_gt_indices(self, fname: str) -> List[int]:
         return self.label_idx_dict[fname]

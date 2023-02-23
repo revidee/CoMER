@@ -65,14 +65,14 @@ PARTIAL_LABEL_PROFILES = {
     'med': {
         'partial_labeling_enabled': True,
         'partial_labeling_only_below_normal_threshold': True,
-        'partial_labeling_min_conf': 0.1,
+        'partial_labeling_min_conf': 0.05,
         'partial_labeling_std_fac': 3.5,
         'partial_labeling_std_fac_fade_conf_exp': 2.0,
     },
     'low': {
         'partial_labeling_enabled': True,
         'partial_labeling_only_below_normal_threshold': True,
-        'partial_labeling_min_conf': 0.3,
+        'partial_labeling_min_conf': 0.15,
         'partial_labeling_std_fac': 5.5,
         'partial_labeling_std_fac_fade_conf_exp': 1.0,
     }
@@ -113,6 +113,7 @@ def main(
         lntemp: float = 0.1,
         conf: str = 'ori',
         gprune: str = 'ori',
+        ora_rand_var: bool = False,
 ):
 
     assert model in AVAILABLE_MODELS
@@ -246,6 +247,9 @@ def main(
 
     if model != 'sup':
         kwargs["conf_fn"] = conf
+
+    if model.find('_ora') != -1:
+        kwargs['random_variation'] = ora_rand_var
 
     del learning["epochs"]
     del learning["check_val_every_n_epoch"]

@@ -1,3 +1,5 @@
+import os
+from pathlib import Path
 from typing import Dict, Callable, List, Union, Tuple, Iterable
 
 import numpy as np
@@ -172,7 +174,71 @@ class CoMERFixMatch(CoMERSelfTraining):
             return True, seq_as_words[:idx], seq_as_words[idx + 1:]
         return False, [], None
 
-    def validation_unlabeled_step_end(self, to_gather: Iterable[Tuple[int, List[List[str]]]]):
+    def log_token_and_len_distribution(self, total_passed_this_step):
+        token_dist_file = Path(os.path.join(self.logger.log_dir, 'token_dist_per_epoch.csv'))
+        if not token_dist_file.is_file():
+            token_dist_file.touch(exist_ok=True)
+        len_dist_file = Path(os.path.join(self.logger.log_dir, 'len_dist_per_epoch.csv'))
+        if not len_dist_file.is_file():
+            token_dist_file.touch(exist_ok=True)
+
+        epoch_and_frequencies = np.zeros((1, len(vocab) + 1), dtype=np.int)
+        epoch_and_frequencies[0][0] = self.current_epoch
+        epoch_and_lens = np.zeros((1, self.hparams['max_len'] + 1), dtype=np.int)
+        epoch_and_lens[0][0] = self.current_epoch
+
+        total_passed = 0
+        for partial_label in self.trainer.unlabeled_pseudo_labels.values():
+            if (partial_label[1] is not None and len(partial_label[1]) > 0) or \
+                    (partial_label[2] is not None and len(partial_label[2]) > 0):
+                total_passed += 1
+            if partial_label[0]:
+                if partial_label[1] is not None and len(partial_label[1]) > 0:
+                    epoch_and_lens[0][len(partial_label[1])] += 1
+                    for token_idx in vocab.words2indices(partial_label[1]):
+                        epoch_and_frequencies[0][token_idx + 1] += 1
+                if partial_label[2] is not None and len(partial_label[2]) > 0:
+                    epoch_and_lens[0][len(partial_label[2])] += 1
+                    for token_idx in vocab.words2indices(partial_label[2]):
+                        epoch_and_frequencies[0][token_idx + 1] += 1
+            elif partial_label[1] is not None and len(partial_label[1]) > 0:
+                # bi-dir, s.t. len and each token counts twice
+                epoch_and_lens[0][len(partial_label[1])] += 2
+                for token_idx in vocab.words2indices(partial_label[1]):
+                    epoch_and_frequencies[0][token_idx + 1] += 2
+        f = token_dist_file.open('a')
+        np.savetxt(f, epoch_and_frequencies, fmt='%.i', delimiter=', ')
+        f.close()
+        f = len_dist_file.open('a')
+        np.savetxt(f, epoch_and_lens, fmt='%.i', delimiter=', ')
+        f.close()
+
+        tb_logger: SummaryWriter = self.logger.experiment
+
+        tb_logger.add_scalar(
+            "passed_pseudo_labels_total",
+            total_passed,
+            self.current_epoch
+        )
+        tb_logger.add_scalar(
+            "passed_pseudo_labels_in_epoch",
+            total_passed_this_step,
+            self.current_epoch
+        )
+        tb_logger.add_scalar(
+            "exprate_pseudo_labels",
+            self.unlabeled_exprate_recorder.compute().item(),
+            self.current_epoch
+        )
+        tb_logger.add_scalar(
+            "exprate_passed_pseudo_labels",
+            self.unlabeled_threshold_passing_exprate_recorder.compute().item(),
+            self.current_epoch
+        )
+        logging.info(f"passed-epoch: {total_passed_this_step}, total: {total_passed}")
+
+
+    def validation_unlabeled_step_end(self, to_gather: Iterable[Tuple[str, MaybePartialLabel]]):
         if not hasattr(self.trainer, 'unlabeled_pseudo_labels'):
             logging.warning("trainer does not have the pseudo-label state, cannot update pseudo-labels")
             return
@@ -193,30 +259,4 @@ class CoMERFixMatch(CoMERSelfTraining):
                     total_passed_this_step += 1
                     self.trainer.unlabeled_pseudo_labels[fname] = partial_label
         if self.local_rank == 0 and self.logger is not None:
-            total_passed = 0
-            for partial_label in self.trainer.unlabeled_pseudo_labels.values():
-                if (partial_label[1] is not None and len(partial_label[1]) > 0) or \
-                        (partial_label[2] is not None and len(partial_label[2]) > 0):
-                    total_passed += 1
-            tb_logger: SummaryWriter = self.logger.experiment
-            tb_logger.add_scalar(
-                "passed_pseudo_labels_total",
-                total_passed,
-                self.current_epoch
-            )
-            tb_logger.add_scalar(
-                "passed_pseudo_labels_in_epoch",
-                total_passed_this_step,
-                self.current_epoch
-            )
-            tb_logger.add_scalar(
-                "exprate_pseudo_labels",
-                self.unlabeled_exprate_recorder.compute().item(),
-                self.current_epoch
-            )
-            tb_logger.add_scalar(
-                "exprate_passed_pseudo_labels",
-                self.unlabeled_threshold_passing_exprate_recorder.compute().item(),
-                self.current_epoch
-            )
-            logging.info(f"passed-epoch: {total_passed_this_step}, total: {total_passed}")
+            self.log_token_and_len_distribution(total_passed_this_step)

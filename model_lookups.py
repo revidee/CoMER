@@ -36,4 +36,6 @@ POSSIBLE_CP_SHORTCUTS = {
 
     'syn_15': './lightning_logs/version_88/checkpoints/ep=145-st=32704-valExpRate=0.4987.ckpt',
     'syn_15_ln': './lightning_logs/version_109/checkpoints/ep=245-st=55104-loss=0.4297-exp=0.5154.ckpt',
+    'syn_50': './lightning_logs/version_193/checkpoints/ep=347-st=264132-loss=0.3051-exp=0.6155.ckpt',
+    'syn_100': './lightning_logs/version_191/checkpoints/ep=149-st=225150-loss=0.2531-exp=0.6430.ckpt',
 }
