@@ -182,9 +182,9 @@ class CoMERFixMatch(CoMERSelfTraining):
         if not len_dist_file.is_file():
             token_dist_file.touch(exist_ok=True)
 
-        epoch_and_frequencies = np.zeros((1, len(vocab) + 1), dtype=np.int)
+        epoch_and_frequencies = np.zeros((1, len(vocab) + 1), dtype=int)
         epoch_and_frequencies[0][0] = self.current_epoch
-        epoch_and_lens = np.zeros((1, self.hparams['max_len'] + 1), dtype=np.int)
+        epoch_and_lens = np.zeros((1, self.hparams['max_len'] + 1), dtype=int)
         epoch_and_lens[0][0] = self.current_epoch
 
         total_passed = 0
