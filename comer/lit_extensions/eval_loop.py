@@ -1,8 +1,6 @@
 from collections import OrderedDict
-from functools import partial
 from typing import Any
 
-from deprecate.utils import void
 from pytorch_lightning.loops import EvaluationLoop
 
 from .eval_epoch_loop import EvaluationWithUnlabeledEpochLoop
@@ -22,20 +20,19 @@ class EvaluationWithUnlabeledLoop(EvaluationLoop):
 
     def advance(self, *args: Any, **kwargs: Any) -> None:
         """Performs evaluation on one single dataloader."""
-        void(*args, **kwargs)
-
         dataloader_idx = self.current_dataloader_idx
         dataloader = self.current_dataloader
+
+        def batch_to_device(batch: Any) -> Any:
+            batch = self.trainer.lightning_module._on_before_batch_transfer(batch, dataloader_idx=dataloader_idx)
+            batch = self.trainer._call_strategy_hook("batch_to_device", batch, dataloader_idx=dataloader_idx)
+            return batch
+
         assert self._data_fetcher is not None
-        self._data_fetcher.setup(
-            dataloader,
-            batch_to_device=partial(self.trainer._call_strategy_hook, "batch_to_device", dataloader_idx=dataloader_idx),
-        )
+        self._data_fetcher.setup(dataloader, batch_to_device=batch_to_device)
         dl_max_batches = self._max_batches[dataloader_idx]
 
         kwargs = OrderedDict()
-        if self.num_dataloaders > 1:
-            kwargs["dataloader_idx"] = dataloader_idx
         if self.num_dataloaders > 1 and dataloader_idx == self.num_dataloaders - 1 and not self.trainer.sanity_checking:
             dl_outputs = self.unlabeled_loop.run(self._data_fetcher, dl_max_batches, kwargs)
         else:
@@ -43,10 +40,6 @@ class EvaluationWithUnlabeledLoop(EvaluationLoop):
 
         # store batch level output per dataloader
         self._outputs.append(dl_outputs)
-
-        if not self.trainer.sanity_checking:
-            # indicate the loop has run
-            self._has_run = True
 
     def sync_batches(self):
         self.epoch_loop._dl_batch_idx.clear()
