@@ -205,3 +205,6 @@ class CoMERSupervised(pl.LightningModule):
             self.log_stats_from_dl_suffix()
         elif 'val_ExpRate/dataloader_idx_0' in metrics:
             self.log_stats_from_dl_suffix('/dataloader_idx_0')
+
+    def validation_dataloader_end(self, output):
+        pass

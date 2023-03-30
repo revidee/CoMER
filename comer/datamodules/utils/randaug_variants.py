@@ -18,8 +18,8 @@ def fixmatch_original():
         (ShearX, 0., 0.3),
         (ShearY, 0., 0.3),
         # (CutoutAbs, 0, 40),
-        (TranslateXabs, 0., 100),
-        (TranslateYabs, 0., 100),
+        (TranslateX, -0.3, 0.3),
+        (TranslateY, -0.3, 0.3),
     ]
 
 

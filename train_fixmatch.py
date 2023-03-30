@@ -114,6 +114,8 @@ def main(
         conf: str = 'ori',
         gprune: str = 'ori',
         ora_rand_var: bool = False,
+        train_bs: int = 8,
+        eval_bs: int = 4
 ):
 
     assert model in AVAILABLE_MODELS
@@ -127,7 +129,7 @@ def main(
     if cp in POSSIBLE_CP_SHORTCUTS:
         cp_addition = f'_from_{cp}'
         len_pct = re.findall('_(\d+)', cp)
-        if len(len_pct) == 1:
+        if len(len_pct) == 1 and pct is None:
             pct = float(len_pct[0]) / 100.0
         cp = POSSIBLE_CP_SHORTCUTS[cp]
 
@@ -205,9 +207,9 @@ def main(
     dm = dm_class(
         test_year='2019',
         val_year='2019',
-        eval_batch_size=4,
+        eval_batch_size=eval_bs,
         zipfile_path='data.zip',
-        train_batch_size=8,
+        train_batch_size=train_bs,
         num_workers=5,
         unlabeled_pct=1.0-pct,
         train_sorting=1,
