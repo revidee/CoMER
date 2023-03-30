@@ -3,6 +3,7 @@ import re
 import sys
 from datetime import datetime
 
+import torch
 from jsonargparse import CLI
 import pprint
 
@@ -173,7 +174,8 @@ def main(
 
     learning = dict(LEARNING_PROFILES[learn])
 
-    monitor_suffix = '/dataloader_idx_0' if includes_st else ''
+    # monitor_suffix = '/dataloader_idx_0' if includes_st else ''
+    monitor_suffix = ''
 
     trainer = UnlabeledValidationExtraStepTrainer(
         unlabeled_val_loop=True,
@@ -277,7 +279,7 @@ def main(
         model = model_class(
             **kwargs
         )
-
+    torch.use_deterministic_algorithms(True, warn_only=True)
     trainer.fit(model, dm)
 
 if __name__ == '__main__':

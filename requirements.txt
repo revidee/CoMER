@@ -1,9 +1,10 @@
 #basics
-pytorch-lightning==1.7.7
+pytorch-lightning<1.9
 torchmetrics==0.10.0
 einops==0.5.0
 editdistance==0.6.0
-pillow==9.2.0
+pillow>=9.2.0
+tensorboard>2.0
 # for pytorch-lightning CLI
 jsonargparse[signatures]==4.18.0
 # dev-dependency
@@ -12,10 +13,10 @@ black==22.10.0
 isort==5.10.1
 jupyter==1.0.0
 opencv-python==4.6.0.66
-matplotlib==3.6.1
+matplotlib>=3.5.0
 # for test in crohme
 typer==0.6.1
 beautifulsoup4==4.11.1
 lxml>=4.9.1
-numpy>=1.23.1
+numpy<1.30
 levenshtein>=0.20.8
