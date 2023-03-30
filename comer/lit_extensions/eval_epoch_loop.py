@@ -2,7 +2,6 @@ from collections import OrderedDict
 from functools import lru_cache
 from typing import Any, Optional, Callable
 
-from deprecate import void
 from pytorch_lightning.loops import EvaluationEpochLoop
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher
 from pytorch_lightning.utilities.model_helpers import is_overridden
@@ -47,7 +46,6 @@ class EvaluationWithUnlabeledEpochLoop(EvaluationEpochLoop):
         Raises:
             StopIteration: If the current batch is None
         """
-        void(dl_max_batches)
 
         self.data_fetcher = data_fetcher
 

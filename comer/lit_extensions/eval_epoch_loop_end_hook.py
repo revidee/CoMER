@@ -1,12 +1,7 @@
-from collections import OrderedDict
 from functools import lru_cache
-from typing import Any, Optional, Callable
 
-from deprecate import void
 from pytorch_lightning.loops import EvaluationEpochLoop
-from pytorch_lightning.utilities.fetching import AbstractDataFetcher
 from pytorch_lightning.utilities.model_helpers import is_overridden
-from pytorch_lightning.utilities.types import STEP_OUTPUT
 
 from comer.lit_extensions import UnlabeledLightningModule
 

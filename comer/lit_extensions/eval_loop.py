@@ -2,7 +2,6 @@ from collections import OrderedDict
 from functools import partial
 from typing import Any
 
-from deprecate.utils import void
 from pytorch_lightning.loops import EvaluationLoop
 
 from .eval_epoch_loop import EvaluationWithUnlabeledEpochLoop
@@ -22,7 +21,6 @@ class EvaluationWithUnlabeledLoop(EvaluationLoop):
 
     def advance(self, *args: Any, **kwargs: Any) -> None:
         """Performs evaluation on one single dataloader."""
-        void(*args, **kwargs)
 
         dataloader_idx = self.current_dataloader_idx
         dataloader = self.current_dataloader
