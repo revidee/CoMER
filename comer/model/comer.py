@@ -8,7 +8,7 @@ from comer.utils.utils import Hypothesis
 
 from .decoder import Decoder
 from .encoder import Encoder
-from comer.datamodules.crohme import vocab
+from comer.datamodules.crohme.vocab import vocab
 
 
 class CoMER(pl.LightningModule):
@@ -24,7 +24,7 @@ class CoMER(pl.LightningModule):
         dc: int,
         cross_coverage: bool,
         self_coverage: bool,
-        used_vocab = vocab
+        used_vocab=vocab
     ):
         super().__init__()
         self.vocab = used_vocab

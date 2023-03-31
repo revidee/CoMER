@@ -13,8 +13,8 @@ from comer.datamodules.crohme import Batch
 from comer.model.comer import CoMER
 from comer.utils.utils import (ExpRateRecorder, Hypothesis, ce_loss,
                                to_bi_tgt_out)
-from comer.datamodules.crohme import vocab as vocabCROHME
-from comer.datamodules.hme100k import vocab as vocabHME
+from comer.datamodules.crohme.vocab import vocab as vocabCROHME
+from comer.datamodules.hme100k.vocab import vocab as vocabHME
 
 class CoMERSupervised(pl.LightningModule):
     def __init__(
