@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 from typing import Dict, Tuple
 from zipfile import ZipFile
 import json
+
 
 def get_hme_data(f: ZipFile) -> Tuple[ZipFile, ZipFile, Dict[str, set[str]]]:
     train_archive = ZipFile(f.open('train.zip'))

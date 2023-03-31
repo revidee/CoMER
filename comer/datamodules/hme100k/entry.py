@@ -1,3 +1,4 @@
+from __future__ import annotations
 import logging
 import math
 from typing import List, Optional, Dict
@@ -74,11 +75,16 @@ def extract_data_entries(archive: ZipFile,
 
             all_labels = picked_labels
         to_grayscale = Grayscale(num_output_channels=1)
-        for file_name, label in all_labels.items():
+        printed = 0
+        print(f"loading {prefix}: ", end="", flush=True)
+        for i, (file_name, label) in enumerate(all_labels.items()):
             inner_file_path = f"{prefix}_images/{file_name}"
             with archive.open(inner_file_path, "r") as f:
                 img: Image.Image = to_grayscale(Image.open(f).copy())
                 data.append(DataEntry(file_name, img, False, label, None))
+            if (i * 100) / len(all_labels) > printed:
+                print("|", end='', flush=True)
+        print()
 
         logging.info(f"Extract data from: {prefix}, with data size: {len(data)}")
 
