@@ -98,11 +98,7 @@ def get_splitted_indices(
     idx_order = np.arange(total_len, dtype=int)
 
     if sorting_mode == 2 or sorting_mode == 3:
-        is_pil_image = isinstance(data[0].image, Image)
-        if is_pil_image:
-            get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size[0] * x.image.size[1]
-        else:
-            get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size(1) * x.image.size(2)
+        get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.shape[0] * x.image.shape[1]
         idx_order = np.argsort(
             np.vectorize(get_entry_image_pixels)(data)
         )
@@ -173,12 +169,7 @@ def build_batches_from_samples(
     total_unlabeled_start_batches: List[int] = []
 
     biggest_image_size = 0
-    is_pil_image = isinstance(data[0].image, Image)
-    if is_pil_image:
-        get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size[0] * x.image.size[1]
-    else:
-        # Tensor on CPU
-        get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size(1) * x.image.size(2)
+    get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.shape[0] * x.image.shape[1]
 
     # Sort the data entries via numpy by total pixel count and use the sorted indices to create a sorted array-view.
     data_sorted: 'np.ndarray[Any, np.dtype[DataEntry]]' = data[
@@ -191,24 +182,17 @@ def build_batches_from_samples(
 
     for entry in data_sorted:
         size = get_entry_image_pixels(entry)
-        if is_pil_image:
-            image_arr = np.array(entry.image)
-        else:
-            image_arr = entry.image
+        image_arr = entry.image
         if size > biggest_image_size:
             biggest_image_size = size
         batch_image_size = biggest_image_size * (i + 1)
         if len(entry.label) > maxlen:
             logging.info(f"label {i} length bigger than {maxlen}, ignoring..")
         elif size > max_imagesize:
-            if is_pil_image:
-                logging.info(
-                    f"image: {entry.file_name} size: {image_arr.shape[0]} x {image_arr.shape[1]} = {size} bigger than {max_imagesize}, ignore"
-                            )
-            else:
-                logging.info(
-                    f"image: {entry.file_name} size: {image_arr.size(0)} x {image_arr.size(1)} = {size} bigger than {max_imagesize}, ignore"
-                )
+            logging.info(
+                f"image: {entry.file_name} size: {image_arr.shape[0]} x {image_arr.shape[1]} = {size} bigger than {max_imagesize}, ignore"
+            )
+
         else:
             if batch_image_size > batch_imagesize or i == batch_size:
                 # a batch is full, add it to the "batch"-list and reset the current batch with the new entry.
@@ -251,12 +235,7 @@ def build_batches_from_samples(
 def sort_data_entries_by_size(data: 'np.ndarray[Any, np.dtype[DataEntry]]'):
     if data.shape[0] == 0:
         return data
-    is_pil_image = isinstance(data[0].image, Image)
-    if is_pil_image:
-        get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size[0] * x.image.size[1]
-    else:
-        # Tensor on CPU
-        get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size(1) * x.image.size(2)
+    get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.shape[0] * x.image.shape[1]
 
     # Sort the data entries via numpy by total pixel count and use the sorted indices to create a sorted array-view.
     return data[

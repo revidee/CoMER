@@ -8,7 +8,7 @@ from comer.datamodules.crohme.dataset import CROHMEDataset
 from comer.datamodules.crohme.variants.collate import collate_fn_hme
 
 from comer.datamodules.hme100k.batch import build_dataset
-from comer.datamodules.hme100k.extract import get_hme_data
+from comer.datamodules.hme100k.extract import get_hme_subsets
 
 
 class HMESupvervisedDatamodule(CROHMESupvervisedDatamodule):
@@ -22,21 +22,21 @@ class HMESupvervisedDatamodule(CROHMESupvervisedDatamodule):
 
     def setup(self, stage: Optional[str] = None) -> None:
         with ZipFile(self.zipfile_path) as archive:
-            train, test, sets = get_hme_data(archive)
+            train, test, sets = get_hme_subsets(archive)
             if stage == "fit" or stage is None:
                 self.train_dataset = CROHMEDataset(
-                    build_dataset(train, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct, sorting_mode=self.train_sorting)[0],
+                    build_dataset(self.zipfile_path, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct, sorting_mode=self.train_sorting)[0],
                     self.train_aug,
                     self.train_aug,
                 )
                 self.val_dataset = CROHMEDataset(
-                    build_dataset(test, 'test',  self.eval_batch_size, limit=self.limit_val, subsets=sets)[0],
+                    build_dataset(self.zipfile_path, 'test',  self.eval_batch_size, limit=self.limit_val, subsets=sets)[0],
                     "",
                     "",
                 )
             if stage == "test" or stage is None:
                 self.test_dataset = CROHMEDataset(
-                    build_dataset(test, 'test',  self.eval_batch_size)[0],
+                    build_dataset(self.zipfile_path, 'test',  self.eval_batch_size)[0],
                     self.test_aug,
                     self.test_aug,
                 )

@@ -49,7 +49,7 @@ def extract_data_entries(archive: ZipFile, dir_name: str,
         label: List[str] = tmp[1:]
         with archive.open(f"{folder_prefix}{dir_name}{folder_infix}/{file_name}.{file_ending}", "r") as f:
             # move image to memory immediately, avoid lazy loading, which will lead to None pointer error in loading
-            img: Image.Image = Image.open(f).copy()
+            img = np.asarray(Image.open(f))
 
             # Directly move the image to a target device.
             # This is needed to call this method from a CPU context (i.e. when doing CLI inference / benching)

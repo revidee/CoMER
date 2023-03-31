@@ -12,7 +12,10 @@ class ScaleToLimitRange:
         self.h_hi = h_hi
 
     def __call__(self, img: 'np.ndarray') -> 'np.ndarray':
-        h, w = img.size
+        is_pil_image = isinstance(img, Image)
+        if is_pil_image:
+            img = np.array(img)
+        h, w = img.shape[:2]
         r = h / w
         lo_r = self.h_lo / self.w_hi
         hi_r = self.h_hi / self.w_lo

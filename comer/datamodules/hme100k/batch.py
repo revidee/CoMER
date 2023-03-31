@@ -7,7 +7,7 @@ from comer.datamodules.hme100k.entry import extract_data_entries
 
 
 def build_dataset(
-        archive: ZipFile,
+        archive: str,
         prefix: str,
         batch_size: int,
         limit: Optional[int] = None,

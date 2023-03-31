@@ -106,7 +106,7 @@ class Decoder(DecodeModel):
         """
         _, l = tgt.size()
         tgt_mask = self._build_attention_mask(l)
-        tgt_pad_mask = tgt == self.used_vocab.PAD_IDX
+        tgt_pad_mask = tgt == self.vocab.PAD_IDX
 
         tgt = self.word_embed(tgt)  # [b, l, d]
         tgt = self.pos_enc(tgt)  # [b, l, d]

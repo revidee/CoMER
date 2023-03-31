@@ -1,6 +1,7 @@
 from __future__ import annotations
-import logging
+
 import math
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import List, Optional, Dict
 from zipfile import ZipFile
 
@@ -10,9 +11,15 @@ from PIL import Image
 from torchvision.transforms import Grayscale
 
 from comer.datamodules.crohme import DataEntry
-from comer.datamodules.hme100k.extract import get_hme_data
+from comer.datamodules.hme100k.extract import get_hme_subsets
 from comer.datamodules.hme100k.vocab import vocab
-def extract_data_entries(archive: ZipFile,
+
+to_grayscale = Grayscale(num_output_channels=1)
+def unzip_file(filename, label, path):
+    img: Image.Image = to_grayscale(Image.open(path).copy())
+    return DataEntry(filename, np.asarray(img), False, label, None)
+
+def extract_data_entries(main_path: str,
                          prefix: str,
                          limit: Optional[int] = None,
                          subsets: Optional[Dict[str, set[str]]] = None,
@@ -27,7 +34,7 @@ def extract_data_entries(archive: ZipFile,
     Returns:
         Data: list of tuple of image and formula
     """
-    with archive.open(f"{prefix}_labels.txt", "r") as f:
+    with open(f'{main_path}/{prefix}_labels.txt', encoding='utf-8') as f:
         captions = f.readlines()
 
         data: List[DataEntry] = []
@@ -40,7 +47,7 @@ def extract_data_entries(archive: ZipFile,
                 compatible_sets[name] = []
 
         for idx, line in enumerate(captions):
-            tmp: List[str] = line.decode().strip().split()
+            tmp: List[str] = line.strip().split()
             label: List[str] = tmp[1:]
 
             # filter incompatible tokens
@@ -74,22 +81,34 @@ def extract_data_entries(archive: ZipFile,
                     picked_labels[fname] = all_labels[fname]
 
             all_labels = picked_labels
-        to_grayscale = Grayscale(num_output_channels=1)
         printed = 0
-        print(f"loading {prefix}: ", end="", flush=True)
-        for i, (file_name, label) in enumerate(all_labels.items()):
-            inner_file_path = f"{prefix}_images/{file_name}"
-            with archive.open(inner_file_path, "r") as f:
-                img: Image.Image = to_grayscale(Image.open(f).copy())
-                data.append(DataEntry(file_name, img, False, label, None))
-            if (i * 100) / len(all_labels) > printed:
-                print("|", end='', flush=True)
-        print()
-
-        logging.info(f"Extract data from: {prefix}, with data size: {len(data)}")
+        done = 0
+        with ProcessPoolExecutor(10) as exe:
+            # unzip each file from the archive
+            futures = [exe.submit(unzip_file, file_name, label, f"{main_path}/{prefix}_images/{file_name}") for (file_name, label) in all_labels.items()]
+            # register the progress indicator callback
+            for future in as_completed(futures):
+                # retrieve the result
+                data.append(future.result())
+                done += 1
+                if (done * 100) / len(all_labels) > printed:
+                    print(f"Loading {prefix}: {printed}%", end='\r', flush=True)
+                    printed += 1
+            #
+        # for i, (file_name, label) in enumerate(all_labels.items()):
+        #     inner_file_path = f"{prefix}_images/{file_name}"
+        #     with archive.open(inner_file_path, "r") as f:
+        #         img: Image.Image = to_grayscale(Image.open(f).copy())
+        #         data.append(DataEntry(file_name, img, False, label, None))
+        #     if (i * 100) / len(all_labels) > printed:
+        #         print(f"Loading {prefix}: {printed}%", end='\r', flush=True)
+        #         printed += 1
+        # print()
+        #
+        # logging.info(f"Extract data from: {prefix}, with data size: {len(data)}")
 
         return np.array(data)
 
 if __name__ == '__main__':
-    train, test, sets = get_hme_data(ZipFile('C:/Users/marca/Desktop/Master/HME100K.zip'))
+    train, test, sets = get_hme_subsets(ZipFile('C:/Users/marca/Desktop/Master/HME100K.zip'))
     extract_data_entries(test, 'test', 10, sets)
