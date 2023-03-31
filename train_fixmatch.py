@@ -13,6 +13,8 @@ from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme.variants.fixmatch_inter_oracle import CROHMEFixMatchOracleDatamodule
 from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
+from comer.datamodules.hme100k.variants.interleaved import HMEInterleavedDatamodule
+from comer.datamodules.hme100k.variants.supervised import HMESupvervisedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
 
 from comer.utils.conf_measures import CONF_MEASURES
@@ -82,7 +84,9 @@ PARTIAL_LABEL_PROFILES = {
 AVAILABLE_DATAMODULES = {
     'sup': CROHMESupvervisedDatamodule,
     'ora': CROHMEFixMatchOracleDatamodule,
-    'fx': CROHMEFixMatchInterleavedDatamodule
+    'fx': CROHMEFixMatchInterleavedDatamodule,
+    'hme_sup': HMESupvervisedDatamodule,
+    'hme_fx': HMEInterleavedDatamodule
 }
 # GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS = {
 #     'none': [],
@@ -116,7 +120,8 @@ def main(
         gprune: str = 'ori',
         ora_rand_var: bool = False,
         train_bs: int = 8,
-        eval_bs: int = 4
+        eval_bs: int = 4,
+        data: str = 'data.zip',
 ):
 
     assert model in AVAILABLE_MODELS
@@ -210,7 +215,7 @@ def main(
         test_year='2019',
         val_year='2019',
         eval_batch_size=eval_bs,
-        zipfile_path='data.zip',
+        zipfile_path=data,
         train_batch_size=train_bs,
         num_workers=5,
         unlabeled_pct=1.0-pct,
