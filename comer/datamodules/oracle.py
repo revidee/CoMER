@@ -15,7 +15,8 @@ def general_levenshtein(gt: Sequence[Hashable], pred: Sequence[Hashable]):
 
 
 class Oracle:
-    def __init__(self, data: 'np.ndarray[Any, np.dtype[DataEntry]]'):
+    def __init__(self, data: 'np.ndarray[Any, np.dtype[DataEntry]]', used_vocab=vocab):
+        self.vocab = used_vocab
         self.label_dict: Dict[str, List[str]] = {}
         self.label_idx_dict: Dict[str, List[int]] = {}
         self.add_data(data)
@@ -44,4 +45,4 @@ class Oracle:
     def add_data(self, data: 'np.ndarray[Any, np.dtype[DataEntry]]'):
         for entry in data:
             self.label_dict[entry.file_name] = entry.label
-            self.label_idx_dict[entry.file_name] = vocab.words2indices(entry.label)
+            self.label_idx_dict[entry.file_name] = self.vocab.words2indices(entry.label)

@@ -165,6 +165,9 @@ def main(
 
 
     model_class = AVAILABLE_MODELS[model]
+    used_vocab = 'crohme'
+    if model.startswith("hme_"):
+        used_vocab = 'hme'
     dm_class = AVAILABLE_DATAMODULES[dm]
 
     logging.getLogger().setLevel(logging.INFO)
@@ -244,7 +247,8 @@ def main(
         'beam_size': 10,
         'max_len': 200,
         'alpha': 1.0,
-        'early_stopping': False
+        'early_stopping': False,
+        'vocab': used_vocab
     }
 
     kwargs = {

@@ -21,10 +21,12 @@ class BeamManager:
                  max_len: int,
                  save_best_k: int = 1,
                  debug: bool = False,
-                 length_penalty: float = 1.0
+                 length_penalty: float = 1.0,
+                 used_vocab=vocab
                  ):
         # static / rather static variables, calculated/set once for easy access
         self.max_beams = max_beams
+        self.vocab = used_vocab
         self.src_idx = src_idx
         self.is_direction_l2r = is_l2r
         self.device = device
@@ -35,12 +37,12 @@ class BeamManager:
         # constant "-inf" tensor to filter out invalid/pruned beams
         self.invalid_score_tensor = torch.tensor(float('-Inf'), device=device)
         # start token, depending on the decoding direction
-        self.start_token = vocab.SOS_IDX if is_l2r else vocab.EOS_IDX
+        self.start_token = self.vocab.SOS_IDX if is_l2r else self.vocab.EOS_IDX
         # end token, depending on the decoding direction
-        self.end_token = vocab.EOS_IDX if is_l2r else vocab.SOS_IDX
+        self.end_token = self.vocab.EOS_IDX if is_l2r else self.vocab.SOS_IDX
         # end token as tensor, for easy comparison without casting
         self.end_token_tensor \
-            = torch.tensor(vocab.EOS_IDX, device=device) if is_l2r else torch.tensor(vocab.SOS_IDX, device=device)
+            = torch.tensor(self.vocab.EOS_IDX, device=device) if is_l2r else torch.tensor(self.vocab.SOS_IDX, device=device)
 
         # state variables
         self.curr_len = 1
@@ -99,13 +101,13 @@ class BeamManager:
             # get the actual token and construct the full sequence
             if sequences[i][sequences.size(1) - 1] == self.end_token_tensor:
                 if self.debug:
-                    print("fin", vocab.indices2words(sequences[i].tolist()), current_token_logit / curr_normalizing_fac)
+                    print("fin", self.vocab.indices2words(sequences[i].tolist()), current_token_logit / curr_normalizing_fac)
                 # if the beam has ended, cache it as best or drop it immediately
                 # self.finish_single(normalized_log_probs[originating_beam_idx][originating_beam_topk_idx], next_sequence)
                 self.finish_single(current_token_logit / curr_normalizing_fac, sequences[i], logit_history, raw_logits[i] if raw_logits is not None else None)
             else:
                 if self.debug:
-                    print("add beam", vocab.indices2words(sequences[i].tolist()), current_token_logit)
+                    print("add beam", self.vocab.indices2words(sequences[i].tolist()), current_token_logit)
                 # Add sequence with it's summed log-probability to the next active beams
                 next_active_beam_indices.append(i)
         if self.debug:

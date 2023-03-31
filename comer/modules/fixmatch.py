@@ -1,22 +1,20 @@
+import logging
 import os
 from pathlib import Path
 from typing import Dict, Callable, List, Union, Tuple, Iterable
 
 import numpy as np
 import torch
-from pytorch_lightning.loggers import TensorBoardLogger
+import torch.distributed as dist
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
 from torch.utils.tensorboard import SummaryWriter
 
-from comer.datamodules.crohme import Batch, vocab
+from comer.datamodules.crohme import Batch
 from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.modules import CoMERSelfTraining
-from comer.utils.conf_measures import th_fn_bimin, score_bimin, score_ori, CONF_MEASURES
+from comer.utils.conf_measures import th_fn_bimin, CONF_MEASURES
 from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out, ExpRateRecorder, Hypothesis)
-import torch.distributed as dist
-
-import logging
 
 
 class CoMERFixMatch(CoMERSelfTraining):
@@ -139,7 +137,7 @@ class CoMERFixMatch(CoMERSelfTraining):
         seq_len = len(hyp.seq)
         if seq_len == 0:
             return False, [], None
-        seq_as_words = vocab.indices2words(hyp.seq)
+        seq_as_words = self.vocab.indices2words(hyp.seq)
         # we are not partial labeling, or we only partial label below the usual threshold, or the seq is too short
         if (not self.hparams.partial_labeling_enabled) or (
            self.hparams.partial_labeling_only_below_normal_threshold and (total_conf >= self.pseudo_labeling_threshold)
@@ -182,7 +180,7 @@ class CoMERFixMatch(CoMERSelfTraining):
         if not len_dist_file.is_file():
             token_dist_file.touch(exist_ok=True)
 
-        epoch_and_frequencies = np.zeros((1, len(vocab) + 1), dtype=int)
+        epoch_and_frequencies = np.zeros((1, len(self.vocab) + 1), dtype=int)
         epoch_and_frequencies[0][0] = self.current_epoch
         epoch_and_lens = np.zeros((1, self.hparams['max_len'] + 1), dtype=int)
         epoch_and_lens[0][0] = self.current_epoch
@@ -195,16 +193,16 @@ class CoMERFixMatch(CoMERSelfTraining):
             if partial_label[0]:
                 if partial_label[1] is not None and len(partial_label[1]) > 0:
                     epoch_and_lens[0][len(partial_label[1])] += 1
-                    for token_idx in vocab.words2indices(partial_label[1]):
+                    for token_idx in self.vocab.words2indices(partial_label[1]):
                         epoch_and_frequencies[0][token_idx + 1] += 1
                 if partial_label[2] is not None and len(partial_label[2]) > 0:
                     epoch_and_lens[0][len(partial_label[2])] += 1
-                    for token_idx in vocab.words2indices(partial_label[2]):
+                    for token_idx in self.vocab.words2indices(partial_label[2]):
                         epoch_and_frequencies[0][token_idx + 1] += 1
             elif partial_label[1] is not None and len(partial_label[1]) > 0:
                 # bi-dir, s.t. len and each token counts twice
                 epoch_and_lens[0][len(partial_label[1])] += 2
-                for token_idx in vocab.words2indices(partial_label[1]):
+                for token_idx in self.vocab.words2indices(partial_label[1]):
                     epoch_and_frequencies[0][token_idx + 1] += 2
         f = token_dist_file.open('a')
         np.savetxt(f, epoch_and_frequencies, fmt='%.i', delimiter=', ')

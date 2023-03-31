@@ -7,7 +7,7 @@ from torch.utils.data.dataloader import DataLoader
 from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme import build_dataset
 from comer.datamodules.crohme.dataset import CROHMEDataset
-from comer.datamodules.crohme.variants.collate import collate_fn, collate_fn_remove_unlabeled
+from comer.datamodules.crohme.variants.collate import collate_fn_remove_unlabeled
 
 
 class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
@@ -88,7 +88,7 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
             self.val_dataset,
             shuffle=False,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         ), DataLoader(
             CROHMEDataset(
                 self.all_unlabeled_with_potential_pseudos(),
@@ -97,5 +97,5 @@ class CROHMESelfTrainingDatamodule(CROHMESupvervisedDatamodule):
             ),
             shuffle=False,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         )]

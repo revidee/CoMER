@@ -5,8 +5,6 @@ from .dataset import CROHMEDataset
 from .variants.supervised import CROHMESupvervisedDatamodule
 from .vocab import vocab
 
-vocab_size = len(vocab)
-
 
 __all__ = [
     "CROHMESupvervisedDatamodule",
@@ -15,7 +13,6 @@ __all__ = [
     "BatchTuple",
     "build_dataset",
     "vocab",
-    "vocab_size",
     "extract_data_entries",
     "get_splitted_indices",
     "build_batches_from_samples",

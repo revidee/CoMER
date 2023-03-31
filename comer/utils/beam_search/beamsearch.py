@@ -36,8 +36,10 @@ class BatchedBeamSearch:
                  debug: bool = False,
                  save_logits: bool = False,
                  logit_norm_temp: float = -1.,
+                 used_vocab=vocab,
                  ):
         self.max_beams = max_beams
+        self.vocab = used_vocab
         self.bi_dir = bi_dir
         self.find_top_k = find_top_k
         self.device = device
@@ -80,10 +82,10 @@ class BatchedBeamSearch:
         self.stats_repeated_src = 0
         self.stats_total_steps = 0
 
-        self.sos_mask = torch.zeros((len(vocab)), dtype=torch.bool, device=self.device)
-        self.sos_mask[vocab.SOS_IDX] = True
-        self.eos_mask = torch.zeros((len(vocab)), dtype=torch.bool, device=self.device)
-        self.eos_mask[vocab.EOS_IDX] = True
+        self.sos_mask = torch.zeros((len(self.vocab)), dtype=torch.bool, device=self.device)
+        self.sos_mask[self.vocab.SOS_IDX] = True
+        self.eos_mask = torch.zeros((len(self.vocab)), dtype=torch.bool, device=self.device)
+        self.eos_mask[self.vocab.EOS_IDX] = True
 
         self.debug = debug
 
@@ -124,7 +126,8 @@ class BatchedBeamSearch:
                 max_len=self.max_len,
                 save_best_k=self.find_top_k,
                 debug=self.debug,
-                length_penalty=self.length_penalty
+                length_penalty=self.length_penalty,
+                used_vocab=self.vocab
             ) for src_idx in range(batch_size)
         ]
 
@@ -138,7 +141,8 @@ class BatchedBeamSearch:
                     max_len=self.max_len,
                     save_best_k=self.find_top_k,
                     debug=self.debug,
-                    length_penalty=self.length_penalty
+                    length_penalty=self.length_penalty,
+                    used_vocab=self.vocab
                 ) for src_idx in range(batch_size)
             ]
         self.beam_managers = beam_managers
@@ -173,9 +177,9 @@ class BatchedBeamSearch:
             #####
 
             # Semantically, we want to do this:
-            #   logits[0:self.next_bm_refs_rl_start_idx, vocab.SOS_IDX] = invalid_score_tensor
+            #   logits[0:self.next_bm_refs_rl_start_idx, self.vocab.SOS_IDX] = invalid_score_tensor
             #       (for all l2r beams, invalidate <SOS> tokens)
-            #   logits[self.next_bm_refs_rl_start_idx:, vocab.EOS_IDX] = invalid_score_tensor
+            #   logits[self.next_bm_refs_rl_start_idx:, self.vocab.EOS_IDX] = invalid_score_tensor
             #       (for all r2l beams, invalidate <EOS> tokens)
             # Which is, to set all <SOS> scores for L2R hypothesis to -Inf, s.t. they are never picked.
 

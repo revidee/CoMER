@@ -2,14 +2,13 @@ import logging
 import math
 from typing import Callable, List, Iterable, Tuple, Union, Dict
 
-import numpy as np
 import torch
+import torch.distributed as dist
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
 
-from comer.datamodules.crohme import Batch, vocab
+from comer.datamodules.crohme import Batch
 from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.modules import CoMERFixMatchInterleaved
-import torch.distributed as dist
 
 
 class CoMERFixMatchInterleavedFixedPct(CoMERFixMatchInterleaved):

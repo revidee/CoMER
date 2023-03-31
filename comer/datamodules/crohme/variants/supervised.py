@@ -39,6 +39,8 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
         self.unlabeled_pct = unlabeled_pct
         self.train_sorting = train_sorting
 
+        self.collate_fn = collate_fn
+
         logging.info(f"Load data from: {self.zipfile_path}")
 
     def setup(self, stage: Optional[str] = None) -> None:
@@ -66,7 +68,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             self.train_dataset,
             shuffle=True,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         )
 
     def val_dataloader(self):
@@ -74,7 +76,7 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             self.val_dataset,
             shuffle=False,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         )
 
     def test_dataloader(self):
@@ -82,5 +84,5 @@ class CROHMESupvervisedDatamodule(pl.LightningDataModule):
             self.test_dataset,
             shuffle=False,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         )

@@ -2,13 +2,11 @@ import logging
 import math
 from typing import Callable, List, Iterable, Tuple, Union, Dict
 
-import numpy as np
 import torch
+import torch.distributed as dist
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
 
-from comer.datamodules.crohme import Batch, vocab
-import torch.distributed as dist
-
+from comer.datamodules.crohme import Batch
 from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.modules import CoMERFixMatchInterleavedTemperatureScaling
 from comer.utils.conf_measures import score_bimin

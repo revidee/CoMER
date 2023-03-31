@@ -9,11 +9,12 @@ import torch.optim as optim
 from pytorch_lightning.utilities import rank_zero_only
 from torch import FloatTensor, LongTensor
 
-from comer.datamodules.crohme import vocab, Batch
+from comer.datamodules.crohme import Batch
 from comer.model.comer import CoMER
 from comer.utils.utils import (ExpRateRecorder, Hypothesis, ce_loss,
                                to_bi_tgt_out)
-
+from comer.datamodules.crohme import vocab as vocabCROHME
+from comer.datamodules.hme100k import vocab as vocabHME
 
 class CoMERSupervised(pl.LightningModule):
     def __init__(
@@ -42,13 +43,21 @@ class CoMERSupervised(pl.LightningModule):
         test_suffix: str = "",
 
         global_pruning_mode: str = 'sup',
+        vocab: str = 'crohme',
 
+        # Backwards compatibility to old checkpoints
         temperature: float = 1.0,
         patience: float = 20,
         monitor: str = 'val_ExpRate',
     ):
         super().__init__()
         self.save_hyperparameters(ignore=["temperature", "patience", "monitor"])
+
+        assert vocab in ['hme', 'crohme']
+        if vocab == 'hme':
+            self.vocab = vocabHME
+        else:
+            self.vocab = vocabCROHME
 
         self.comer_model = CoMER(
             d_model=d_model,
@@ -61,6 +70,7 @@ class CoMERSupervised(pl.LightningModule):
             dc=dc,
             cross_coverage=cross_coverage,
             self_coverage=self_coverage,
+            used_vocab=self.vocab
         )
 
         self.exprate_recorder = ExpRateRecorder()
@@ -126,7 +136,7 @@ class CoMERSupervised(pl.LightningModule):
     def test_step(self, batch: Batch, _):
         hyps = self.approximate_joint_search(batch.imgs, batch.mask, global_pruning='none')
         self.exprate_recorder([h.seq for h in hyps], [label_tuple[1] for label_tuple in batch.labels])
-        return batch.img_bases, [vocab.indices2label(h.seq) for h in hyps], [len(h.seq) for h in hyps], [h.score for h in hyps]
+        return batch.img_bases, [self.vocab.indices2label(h.seq) for h in hyps], [len(h.seq) for h in hyps], [h.score for h in hyps]
 
     def test_epoch_end(self, test_outputs: List[Tuple[List[str], List[str], List[int], List[float]]]) -> None:
         exprate = self.exprate_recorder.compute()

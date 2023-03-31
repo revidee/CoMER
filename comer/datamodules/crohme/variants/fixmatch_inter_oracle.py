@@ -1,14 +1,10 @@
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any
 from zipfile import ZipFile
 
-from torch.utils.data.dataloader import DataLoader
-
-from comer.datamodules import CROHMESupvervisedDatamodule, CROHMEFixMatchInterleavedDatamodule, Oracle
+from comer.datamodules import CROHMEFixMatchInterleavedDatamodule, Oracle
 from comer.datamodules.crohme import build_dataset, extract_data_entries, get_splitted_indices, \
-    build_batches_from_samples, DataEntry, BatchTuple
-from comer.datamodules.crohme.batch import MaybePartialLabel
+    build_batches_from_samples, DataEntry
 from comer.datamodules.crohme.dataset import CROHMEDataset
-from comer.datamodules.crohme.variants.collate import collate_fn, collate_fn_remove_unlabeled
 
 
 class CROHMEFixMatchOracleDatamodule(CROHMEFixMatchInterleavedDatamodule):

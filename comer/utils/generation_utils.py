@@ -8,7 +8,7 @@ from einops import rearrange
 from einops.einops import repeat
 from torch import FloatTensor, LongTensor
 
-from comer.datamodules.crohme import vocab, vocab_size
+from comer.datamodules.crohme import vocab
 from comer.utils.beam_search import BatchedBeamSearch, invalid_score
 from comer.utils.original_beam_search import BeamSearchScorer
 from comer.utils.utils import Hypothesis, ce_loss, to_tgt_output
@@ -19,6 +19,12 @@ from comer.utils.utils import Hypothesis, ce_loss, to_tgt_output
 
 
 class DecodeModel(pl.LightningModule):
+
+    def __init__(self, used_vocab=vocab):
+        super().__init__()
+        self.vocab = used_vocab
+
+
     @abstractmethod
     def transform(
             self, src: List[FloatTensor], src_mask: List[LongTensor], input_ids: LongTensor
@@ -90,7 +96,7 @@ class DecodeModel(pl.LightningModule):
             src_mask[0] = torch.cat((src_mask[0], src_mask[0]), dim=0)
             r2l = torch.full(
                 (single_direction_size, 1),
-                fill_value=vocab.EOS_IDX,
+                fill_value=self.vocab.EOS_IDX,
                 dtype=torch.long,
                 device=self.device,
             )
@@ -103,7 +109,7 @@ class DecodeModel(pl.LightningModule):
 
         input_ids = torch.full(
             (single_direction_size, 1),
-            fill_value=vocab.SOS_IDX,
+            fill_value=self.vocab.SOS_IDX,
             dtype=torch.long,
             device=self.device,
         )
@@ -135,7 +141,7 @@ class DecodeModel(pl.LightningModule):
         if debug:
             print("score before")
             for i, hyp in enumerate(hyps):
-                print(f"{scores[i]:.4f}", vocab.indices2words(hyp.tolist()))
+                print(f"{scores[i]:.4f}", self.vocab.indices2words(hyp.tolist()))
 
         # Now we can guarantee that every hyp is in "l2r" form.
 
@@ -171,13 +177,13 @@ class DecodeModel(pl.LightningModule):
                         idx = i + r2l_start_idx
                     else:
                         idx = i - r2l_start_idx
-                    print(f"{rev_scores[i]:.4f}", vocab.indices2words(tgt[idx].tolist()), "for",
-                          vocab.indices2words(hyps[i].tolist()))
+                    print(f"{rev_scores[i]:.4f}", self.vocab.indices2words(tgt[idx].tolist()), "for",
+                          self.vocab.indices2words(hyps[i].tolist()))
             scores = scores + rev_scores
         if debug:
             print("score after")
             for i, hyp in enumerate(hyps):
-                print(f"{scores[i]:.4f}", vocab.indices2words(hyp.tolist()))
+                print(f"{scores[i]:.4f}", self.vocab.indices2words(hyp.tolist()))
         # Scores dim: [(2 *, if bi_dir )b * beam_size]
         # Goal now: Rearrange to [b, (2 *, if bi_dir )beam_size], s.t. we can choose the best ones from either direction
         scores = rearrange(scores, "(b m) -> b m", b=batch_size)
@@ -277,8 +283,8 @@ class DecodeModel(pl.LightningModule):
                 next_token_scores, 2 * beam_size, dim=1
             )
 
-            next_indices = torch.div(next_tokens, vocab_size, rounding_mode='trunc')
-            next_tokens = next_tokens % vocab_size
+            next_indices = torch.div(next_tokens, len(self.vocab), rounding_mode='trunc')
+            next_tokens = next_tokens % len(self.vocab)
 
             if cur_len == 1:
                 input_ids = repeat(input_ids, "b l -> (b m) l", m=beam_size)
@@ -336,7 +342,7 @@ class DecodeModel(pl.LightningModule):
         loss = ce_loss(out_hat, out, reduction="none")
         loss = rearrange(loss, "(b l) -> b l", b=b)
 
-        mask = tgt == vocab.PAD_IDX
+        mask = tgt == self.vocab.PAD_IDX
         penalty = (~mask).sum(dim=1) ** alpha
         loss = -torch.sum(loss, dim=1) / penalty
 
@@ -378,7 +384,7 @@ class DecodeModel(pl.LightningModule):
         loss = ce_loss(out_hat, out, reduction="none")
         loss = rearrange(loss, "(b l) -> b l", b=b)
 
-        mask = tgt == vocab.PAD_IDX
+        mask = tgt == self.vocab.PAD_IDX
         penalty = (~mask).sum(dim=1) ** alpha
         loss = -torch.sum(loss, dim=1) / penalty
 
@@ -445,7 +451,8 @@ class DecodeModel(pl.LightningModule):
             debug=debug,
             save_logits=save_logits,
             logit_norm_temp=logit_norm_temp,
-            min_normalized_pseudo_probabilty=global_pruning_threshold
+            min_normalized_pseudo_probabilty=global_pruning_threshold,
+            used_vocab=self.vocab
         )
         if save_logits:
             hyps_l2r, history_l2r, scores_l2r, repeats_l2r, raw_logits_l2r, \
@@ -510,11 +517,11 @@ class DecodeModel(pl.LightningModule):
                 print("rev_scores:")
                 for i, single_tgt in enumerate(tgt):
                     if i < hyps_l2r_len:
-                        print(f"{rev_scores[i]:.4f}", vocab.indices2words(single_tgt.tolist()), "for (l2r)",
-                              vocab.indices2words(hyps_l2r[i].tolist()))
+                        print(f"{rev_scores[i]:.4f}", self.vocab.indices2words(single_tgt.tolist()), "for (l2r)",
+                              self.vocab.indices2words(hyps_l2r[i].tolist()))
                     else:
-                        print(f"{rev_scores[i]:.4f}", vocab.indices2words(single_tgt.tolist()), "for (r2l)",
-                              vocab.indices2words(hyps_r2l[i - hyps_l2r_len].tolist()))
+                        print(f"{rev_scores[i]:.4f}", self.vocab.indices2words(single_tgt.tolist()), "for (r2l)",
+                              self.vocab.indices2words(hyps_r2l[i - hyps_l2r_len].tolist()))
 
             scores_l2r += rev_scores[:hyps_l2r_len]
             scores_r2l += rev_scores[hyps_l2r_len:]

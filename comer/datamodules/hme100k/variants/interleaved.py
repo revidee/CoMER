@@ -1,17 +1,17 @@
-from typing import Optional, Any, List
+from typing import Optional, Any
 from zipfile import ZipFile
 
 import numpy as np
-from torch.utils.data.dataloader import DataLoader
 
 from comer.datamodules import CROHMEFixMatchInterleavedDatamodule
 from comer.datamodules.crohme import get_splitted_indices, \
-    build_batches_from_samples, DataEntry, build_interleaved_batches_from_samples
+    build_batches_from_samples, DataEntry
 from comer.datamodules.crohme.dataset import CROHMEDataset
-from comer.datamodules.crohme.variants.collate import collate_fn
+from comer.datamodules.crohme.variants.collate import collate_fn_hme
 from comer.datamodules.hme100k.batch import build_dataset
 from comer.datamodules.hme100k.entry import extract_data_entries
 from comer.datamodules.hme100k.extract import get_hme_data
+from comer.datamodules.hme100k.vocab import vocab
 from comer.datamodules.oracle import Oracle
 
 
@@ -20,6 +20,9 @@ class HMEInterleavedDatamodule(CROHMEFixMatchInterleavedDatamodule):
     def __init__(self, limit_val: int = 1000, **kwargs):
         super().__init__(**kwargs)
         self.limit_val = limit_val
+        self.collate_fn = collate_fn_hme
+
+
     def setup(self, stage: Optional[str] = None) -> None:
         with ZipFile(self.zipfile_path) as archive:
             train, test, sets = get_hme_data(archive)
@@ -49,7 +52,7 @@ class HMEInterleavedDatamodule(CROHMEFixMatchInterleavedDatamodule):
                 self.setup_pseudo_label_cache(self.unlabeled_data)
 
                 # init oracle
-                self.trainer.oracle = Oracle(self.unlabeled_data)
+                self.trainer.oracle = Oracle(self.unlabeled_data, used_vocab=vocab)
 
                 self.val_dataset = CROHMEDataset(
                     build_dataset(test, 'test',  self.eval_batch_size, limit=self.limit_val, subsets=sets)[0],

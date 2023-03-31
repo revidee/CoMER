@@ -1,19 +1,18 @@
 import logging
-import math
 from typing import List, Tuple, Iterable, Union, Callable
 
+import numpy as np
 import torch
 import torch.distributed as dist
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
-from torch import optim
 
-from comer.datamodules.crohme import Batch, vocab
+from comer.datamodules.crohme import Batch
 from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.lit_extensions import UnlabeledLightningModule
 from comer.modules.supervised import CoMERSupervised
 from comer.utils.utils import (ce_loss,
                                to_bi_tgt_out)
-import numpy as np
+
 
 class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
 
@@ -83,7 +82,7 @@ class CoMERSelfTraining(CoMERSupervised, UnlabeledLightningModule):
                 # By dividing with 2, we average between these to get a kind-of log-likelihood again.
                 pseudo_labels.append(
                     [
-                        (False, vocab.indices2words(h.seq), None) if (h.score / 2) >= self.pseudo_labeling_threshold
+                        (False, self.vocab.indices2words(h.seq), None) if (h.score / 2) >= self.pseudo_labeling_threshold
                         else [] for h in self.approximate_joint_search(batch.imgs, batch.mask)]
                 )
 

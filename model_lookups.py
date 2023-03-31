@@ -17,7 +17,10 @@ AVAILABLE_MODELS = {
 
     'ln_ts': CoMERFixMatchInterleavedLogitNormTempScale,
     'ln_ts_fixed': CoMERFixMatchInterleavedFixedPctLogitNormTempScale,
-    'ln_ora_ts': CoMERFixMatchOracleInterleavedLogitNormTempScale
+    'ln_ora_ts': CoMERFixMatchOracleInterleavedLogitNormTempScale,
+
+    'hme_sup': CoMERSupervised,
+    'hme_fx_ts': CoMERFixMatchInterleavedTemperatureScaling,
 }
 
 POSSIBLE_CP_SHORTCUTS = {

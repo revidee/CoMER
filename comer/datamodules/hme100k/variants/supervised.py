@@ -5,6 +5,7 @@ from zipfile import ZipFile
 
 from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme.dataset import CROHMEDataset
+from comer.datamodules.crohme.variants.collate import collate_fn_hme
 
 from comer.datamodules.hme100k.batch import build_dataset
 from comer.datamodules.hme100k.extract import get_hme_data
@@ -15,6 +16,7 @@ class HMESupvervisedDatamodule(CROHMESupvervisedDatamodule):
                  limit_val: int = 1000, **kwargs) -> None:
         super().__init__(zipfile_path=zipfile_path, **kwargs)
         self.limit_val = limit_val
+        self.collate_fn = collate_fn_hme
 
         logging.info(f"Load data from: {self.zipfile_path}")
 

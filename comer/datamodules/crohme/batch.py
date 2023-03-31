@@ -45,7 +45,7 @@ BatchTuple = Tuple[List[str], List[Image], List[MaybePartialLabel], int, int]
 
 
 # Creates a Batch of (potentially) annotated images which pads & masks the images, s.t. they fit into a single tensor.
-def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], labels: List[MaybePartialLabel], is_labled: bool, src_idx: int, remove_unlabeled: bool = False) -> Batch:
+def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], labels: List[MaybePartialLabel], is_labled: bool, src_idx: int, remove_unlabeled: bool = False, used_vocab=vocab) -> Batch:
     assert (len(file_names) == len(images) == len(images))
 
     filtered_images: List['np.ndarray'] = []
@@ -63,8 +63,8 @@ def create_batch_from_lists(file_names: List[str], images: List['np.ndarray'], l
             filtered_images.append(filtered_im)
             filtered_labels_as_indices.append((
                 label[0],
-                vocab.words2indices(label[1]) if label[1] is not None else None,
-                vocab.words2indices(label[2]) if label[2] is not None else None
+                used_vocab.words2indices(label[1]) if label[1] is not None else None,
+                used_vocab.words2indices(label[2]) if label[2] is not None else None
             ))
             filtered_file_names.append((file_names[i]))
             filtered_heights_x.append(filtered_im.size(1))

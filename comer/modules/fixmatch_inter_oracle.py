@@ -4,14 +4,12 @@ from collections import defaultdict
 from typing import Callable, List, Tuple, Iterable, Union, Dict
 
 import torch
+import torch.distributed as dist
 from pytorch_lightning.utilities.fetching import AbstractDataFetcher, DataLoaderIterDataFetcher
-from torch.utils.tensorboard import SummaryWriter
 
-from comer.datamodules import Oracle
-from comer.datamodules.crohme import Batch, vocab
+from comer.datamodules.crohme import Batch
 from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.modules import CoMERFixMatchInterleaved
-import torch.distributed as dist
 
 
 class CoMERFixMatchOracleInterleaved(CoMERFixMatchInterleaved):
@@ -50,7 +48,7 @@ class CoMERFixMatchOracleInterleaved(CoMERFixMatchInterleaved):
                     )
                     if lev_dist <= self.pseudo_labeling_threshold:
                         fnames.append(batch.img_bases[i])
-                        pseudo_labels.append((False, vocab.indices2words(h.seq), None))
+                        pseudo_labels.append((False, self.vocab.indices2words(h.seq), None))
                         lev_dists.append(lev_dist)
 
                 end_batch(batch, batch_idx)
@@ -103,10 +101,10 @@ class CoMERFixMatchOracleInterleaved(CoMERFixMatchInterleaved):
                             next_label = next_label[:char_idx] + next_label[(char_idx + 1):]
                         elif err_type == 1:
                             # add random character
-                            next_label.insert(char_idx, vocab.idx2word[random.randint(VOCAB_MIN_IDX, len(vocab) - 1)])
+                            next_label.insert(char_idx, self.vocab.idx2word[random.randint(VOCAB_MIN_IDX, len(self.vocab) - 1)])
                         else:
                             # swap with random character from the vocab
-                            next_label[char_idx] = vocab.idx2word[random.randint(VOCAB_MIN_IDX, len(vocab) - 1)]
+                            next_label[char_idx] = self.vocab.idx2word[random.randint(VOCAB_MIN_IDX, len(self.vocab) - 1)]
                     # add the potentially altered label to the unlabeled set
                     self.trainer.unlabeled_pseudo_labels[next_fname] = (False, next_label, None)
 

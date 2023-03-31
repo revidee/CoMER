@@ -8,7 +8,7 @@ from comer.datamodules.crohme import build_dataset, extract_data_entries, get_sp
     build_batches_from_samples, DataEntry, BatchTuple
 from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.datamodules.crohme.dataset import CROHMEDataset
-from comer.datamodules.crohme.variants.collate import collate_fn, collate_fn_remove_unlabeled
+from comer.datamodules.crohme.variants.collate import collate_fn_remove_unlabeled
 
 
 class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
@@ -113,7 +113,7 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
             self.train_labeled_dataset,
             shuffle=True,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         )
         if len(unlabeled_with_pseudos) == 0:
             return {
@@ -138,7 +138,7 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
             self.val_dataset,
             shuffle=False,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         ), DataLoader(
             CROHMEDataset(
                 self.pseudo_labeling_batches,
@@ -147,5 +147,5 @@ class CROHMEFixMatchDatamodule(CROHMESupvervisedDatamodule):
             ),
             shuffle=False,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         )]

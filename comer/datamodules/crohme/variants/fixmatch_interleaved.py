@@ -1,15 +1,13 @@
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any, List
 from zipfile import ZipFile
 
 import numpy as np
 from torch.utils.data.dataloader import DataLoader
 
-from comer.datamodules.crohme.batch import MaybePartialLabel
 from comer.datamodules.oracle import Oracle
 from comer.datamodules.crohme import build_dataset, extract_data_entries, get_splitted_indices, \
     build_batches_from_samples, DataEntry, build_interleaved_batches_from_samples
 from comer.datamodules.crohme.dataset import CROHMEDataset
-from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.datamodules.crohme.variants.fixmatch import CROHMEFixMatchDatamodule
 
 
@@ -87,6 +85,6 @@ class CROHMEFixMatchInterleavedDatamodule(CROHMEFixMatchDatamodule):
             ),
             shuffle=True,
             num_workers=self.num_workers,
-            collate_fn=collate_fn,
+            collate_fn=self.collate_fn,
         )
 

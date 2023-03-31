@@ -8,7 +8,7 @@ from einops import rearrange
 from torch import LongTensor, FloatTensor, Tensor, optim
 from torch.utils.tensorboard import SummaryWriter
 
-from comer.datamodules.crohme import Batch, vocab
+from comer.datamodules.crohme import Batch
 from comer.modules import CoMERFixMatchInterleaved
 from comer.utils import ECELoss
 from comer.utils.utils import (ce_loss,
@@ -123,7 +123,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
             if self.verbose_temp_scale:
                 before_temperature_nll = F.cross_entropy(logits / self.current_temperature, labels,
-                                                         ignore_index=vocab.PAD_IDX, reduction="mean").item()
+                                                         ignore_index=self.vocab.PAD_IDX, reduction="mean").item()
                 before_temperature_ece = ece_criterion(logits / self.current_temperature, labels).item()
 
                 logging.info(f'Before temperature - NLL: {before_temperature_nll:.3f}, ECE: {before_temperature_ece:.3f}')
@@ -136,10 +136,10 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
                     optimizer.zero_grad()
                     loss = ece_criterion(logits / torch.abs(current_temperature), labels) \
                            + 3 * F.cross_entropy(logits / torch.abs(current_temperature), labels,
-                                             ignore_index=vocab.PAD_IDX, reduction="mean")
+                                             ignore_index=self.vocab.PAD_IDX, reduction="mean")
                     # loss = ce_logitnorm_loss(logits / current_temperature, labels)
                     # loss = F.cross_entropy(logits / torch.abs(current_temperature), labels,
-                    #                        ignore_index=vocab.PAD_IDX, reduction="mean")
+                    #                        ignore_index=self.vocab.PAD_IDX, reduction="mean")
                     loss.backward()
                     return loss
 
@@ -149,7 +149,7 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
                 if self.verbose_temp_scale:
                     after_temperature_nll = F.cross_entropy(logits / torch.abs(current_temperature), labels,
-                                                            ignore_index=vocab.PAD_IDX, reduction="mean").item()
+                                                            ignore_index=self.vocab.PAD_IDX, reduction="mean").item()
                     after_temperature_ece = ece_criterion(logits / torch.abs(current_temperature), labels).item()
                     logging.info(f'Optimal temperature: {torch.abs(current_temperature).item():.3f}')
                     logging.info(f'After temperature - NLL: {after_temperature_nll:.3f}, ECE: {after_temperature_ece:.3f}')
