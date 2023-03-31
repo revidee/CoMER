@@ -41,7 +41,7 @@ class Batch:
 
 # A BatchTuple represents a single batch which contains 3 lists of equal length (batch-len)
 # [file_names, images, labels unlabeled_start, src_idx]
-BatchTuple = Tuple[List[str], List['np.ndarray'], List[MaybePartialLabel], int, int]
+BatchTuple = Tuple[List[str], List[Image], List[MaybePartialLabel], int, int]
 
 
 # Creates a Batch of (potentially) annotated images which pads & masks the images, s.t. they fit into a single tensor.
@@ -164,11 +164,11 @@ def build_batches_from_samples(
     if data.shape[0] == 0:
         return list()
     next_batch_file_names: List[str] = []
-    next_batch_images: List['np.ndarray'] = []
+    next_batch_images: List[Image] = []
     next_batch_labels: List[MaybePartialLabel] = []
 
     total_fname_batches: List[List[str]] = []
-    total_feature_batches: List[List['np.ndarray']] = []
+    total_feature_batches: List[List[Image]] = []
     total_label_batches: List[List[MaybePartialLabel]] = []
     total_unlabeled_start_batches: List[int] = []
 
@@ -177,6 +177,7 @@ def build_batches_from_samples(
     if is_pil_image:
         get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size[0] * x.image.size[1]
     else:
+        # Tensor on CPU
         get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size(1) * x.image.size(2)
 
     # Sort the data entries via numpy by total pixel count and use the sorted indices to create a sorted array-view.
@@ -254,6 +255,7 @@ def sort_data_entries_by_size(data: 'np.ndarray[Any, np.dtype[DataEntry]]'):
     if is_pil_image:
         get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size[0] * x.image.size[1]
     else:
+        # Tensor on CPU
         get_entry_image_pixels: Callable[[DataEntry], int] = lambda x: x.image.size(1) * x.image.size(2)
 
     # Sort the data entries via numpy by total pixel count and use the sorted indices to create a sorted array-view.
@@ -274,7 +276,6 @@ def build_interleaved_batches_from_samples(
     total = labeled_len + unlabeled_len
     if total == 0:
         return list()
-    is_pil_image = isinstance(labeled[0].image, Image)
 
     # Sort the data entries via numpy by total pixel count and use the sorted indices to create a sorted array-view.
     labeled_sorted = sort_data_entries_by_size(labeled)
@@ -300,14 +301,14 @@ def build_interleaved_batches_from_samples(
             [] if unlabeled_in_batch_len == 0 else unlabeled_sorted[unlabeled_idx:unlabeled_end_idx].tolist()
         )
 
-        splitted_entries: List[Tuple[str, 'np.ndarray', MaybePartialLabel]] = [
+        splitted_entries: List[Tuple[str, Image, MaybePartialLabel]] = [
                         (
                             entry.file_name,
-                            np.array(entry.image) if is_pil_image else entry.image,
+                            entry.image,
                             (entry.is_partial, entry.label, entry.label_r2l)
                         ) for entry in batch_entries
                     ]
-        partial_entries: Tuple[List[str], List['np.ndarray'], List[MaybePartialLabel]] = list(zip(*splitted_entries))
+        partial_entries: Tuple[List[str], List[Image], List[MaybePartialLabel]] = list(zip(*splitted_entries))
         batches.append((
             partial_entries[0],
             partial_entries[1],

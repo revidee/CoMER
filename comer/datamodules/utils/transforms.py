@@ -47,8 +47,13 @@ class ScaleAugmentation:
         assert lo <= hi
         self.lo = lo
         self.hi = hi
+        test = H_LO
+        H_HI = 256
+        W_LO = 8
+        W_HI = 1024
 
     def __call__(self, img: 'np.ndarray') -> 'np.ndarray':
         k = np.random.uniform(self.lo, self.hi)
+
         img = cv2.resize(img, None, fx=k, fy=k, interpolation=cv2.INTER_LINEAR)
         return img

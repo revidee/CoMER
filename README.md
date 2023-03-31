@@ -39,7 +39,7 @@ cd CoMER
 conda create -y -n CoMER python=3.7
 conda activate CoMER
 # install pytorch >= 1.8 & torchvision >= 0.2 with cudatoolkit / rocm.
-pip install "numpy<1.30" "torch==1.12.1" "torchvision==0.13.1" --index-url https://download.pytorch.org/whl/cu116
+pip install "numpy<1.30" "torch<1.14" "torchvision<0.15" --index-url https://download.pytorch.org/whl/cu117
 pip install -e .
 # evaluating dependency
 conda install pandoc=1.19.2.1 -c conda-forge

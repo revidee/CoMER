@@ -20,7 +20,7 @@ class CROHMEVocab:
         self.word2idx["<sos>"] = self.SOS_IDX
         self.word2idx["<eos>"] = self.EOS_IDX
 
-        with open(dict_path, "r") as f:
+        with open(dict_path, "r", encoding='utf8') as f:
             for line in f.readlines():
                 w = line.strip()
                 self.word2idx[w] = len(self.word2idx)
@@ -38,6 +38,12 @@ class CROHMEVocab:
     def indices2label(self, id_list: List[int]) -> str:
         words = self.indices2words(id_list)
         return " ".join(words)
+
+    def is_label_compatible(self, label: List[str]):
+        for token in label:
+            if token not in self.word2idx:
+                return False
+        return True
 
     def __len__(self):
         return len(self.word2idx)

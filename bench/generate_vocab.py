@@ -33,7 +33,7 @@ def main():
 
     vocab_list = list(vocab_set.keys())
     for sorted_key in sorted(vocab_list):
-        print(sorted_key, vocab_set[sorted_key])
+        print(sorted_key)
     print('total kanji', tot_kanjis)
     print('total kanji labels', total_kanji_labels)
 
