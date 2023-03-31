@@ -21,7 +21,7 @@ class HMESupvervisedDatamodule(CROHMESupvervisedDatamodule):
         logging.info(f"Load data from: {self.zipfile_path}")
 
     def setup(self, stage: Optional[str] = None) -> None:
-        train, test, sets = get_hme_subsets(self.zipfile_path)
+        sets = get_hme_subsets(self.zipfile_path)
         if stage == "fit" or stage is None:
             self.train_dataset = CROHMEDataset(
                 build_dataset(self.zipfile_path, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct, sorting_mode=self.train_sorting)[0],
