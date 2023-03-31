@@ -28,7 +28,7 @@ class HMEInterleavedDatamodule(CROHMEFixMatchInterleavedDatamodule):
             train, test, sets = get_hme_data(archive)
             if stage == "fit" or stage is None:
                 assert 0.0 < self.unlabeled_pct < 1.0
-                full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train")
+                full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(train, "train")
 
                 labeled_indices, unlabeled_indices = get_splitted_indices(
                     full_train_data,
