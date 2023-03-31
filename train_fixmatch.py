@@ -174,8 +174,8 @@ def main(
 
     learning = dict(LEARNING_PROFILES[learn])
 
-    # monitor_suffix = '/dataloader_idx_0' if includes_st else ''
-    monitor_suffix = ''
+    monitor_suffix = '/dataloader_idx_0' if includes_st else ''
+    # monitor_suffix = ''
 
     trainer = UnlabeledValidationExtraStepTrainer(
         unlabeled_val_loop=True,
