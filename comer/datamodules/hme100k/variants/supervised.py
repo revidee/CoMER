@@ -21,22 +21,21 @@ class HMESupvervisedDatamodule(CROHMESupvervisedDatamodule):
         logging.info(f"Load data from: {self.zipfile_path}")
 
     def setup(self, stage: Optional[str] = None) -> None:
-        with ZipFile(self.zipfile_path) as archive:
-            train, test, sets = get_hme_subsets(archive)
-            if stage == "fit" or stage is None:
-                self.train_dataset = CROHMEDataset(
-                    build_dataset(self.zipfile_path, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct, sorting_mode=self.train_sorting)[0],
-                    self.train_aug,
-                    self.train_aug,
-                )
-                self.val_dataset = CROHMEDataset(
-                    build_dataset(self.zipfile_path, 'test',  self.eval_batch_size, limit=self.limit_val, subsets=sets)[0],
-                    "",
-                    "",
-                )
-            if stage == "test" or stage is None:
-                self.test_dataset = CROHMEDataset(
-                    build_dataset(self.zipfile_path, 'test',  self.eval_batch_size)[0],
-                    self.test_aug,
-                    self.test_aug,
-                )
+        train, test, sets = get_hme_subsets(self.zipfile_path)
+        if stage == "fit" or stage is None:
+            self.train_dataset = CROHMEDataset(
+                build_dataset(self.zipfile_path, "train", self.train_batch_size, unlabeled_pct=self.unlabeled_pct, sorting_mode=self.train_sorting)[0],
+                self.train_aug,
+                self.train_aug,
+            )
+            self.val_dataset = CROHMEDataset(
+                build_dataset(self.zipfile_path, 'test',  self.eval_batch_size, limit=self.limit_val, subsets=sets)[0],
+                "",
+                "",
+            )
+        if stage == "test" or stage is None:
+            self.test_dataset = CROHMEDataset(
+                build_dataset(self.zipfile_path, 'test',  self.eval_batch_size)[0],
+                self.test_aug,
+                self.test_aug,
+            )
