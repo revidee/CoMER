@@ -13,7 +13,7 @@ from comer.datamodules.hme100k.extract import get_hme_subsets
 
 class HMESupvervisedDatamodule(CROHMESupvervisedDatamodule):
     def __init__(self, zipfile_path: str = f"{os.path.dirname(os.path.realpath(__file__))}/../../../../hme100k.zip",
-                 limit_val: int = 1000, **kwargs) -> None:
+                 limit_val: int = 3000, **kwargs) -> None:
         super().__init__(zipfile_path=zipfile_path, **kwargs)
         self.limit_val = limit_val
         self.collate_fn = collate_fn_hme
