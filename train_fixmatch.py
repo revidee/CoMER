@@ -12,6 +12,8 @@ from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme.variants.fixmatch_inter_oracle import CROHMEFixMatchOracleDatamodule
 from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
+from comer.datamodules.crohme.variants.interleaved_test_as_unlabeled import \
+    CROHMEFixMatchInterleavedTestAsUnlabeledDatamodule
 from comer.datamodules.hme100k.variants.interleaved import HMEInterleavedDatamodule
 from comer.datamodules.hme100k.variants.supervised import HMESupvervisedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
@@ -90,6 +92,7 @@ AVAILABLE_DATAMODULES = {
     'sup': CROHMESupvervisedDatamodule,
     'ora': CROHMEFixMatchOracleDatamodule,
     'fx': CROHMEFixMatchInterleavedDatamodule,
+    'fx_td': CROHMEFixMatchInterleavedTestAsUnlabeledDatamodule,
     'hme_sup': HMESupvervisedDatamodule,
     'hme_fx': HMEInterleavedDatamodule
 }
