@@ -13,6 +13,8 @@ from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from comer.datamodules import CROHMESupvervisedDatamodule
 from comer.datamodules.crohme.variants.fixmatch_inter_oracle import CROHMEFixMatchOracleDatamodule
 from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatchInterleavedDatamodule
+from comer.datamodules.crohme.variants.interleaved_test_as_unlabeled import \
+    CROHMEFixMatchInterleavedTestAsUnlabeledDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
 
 from comer.utils.conf_measures import CONF_MEASURES
@@ -82,7 +84,8 @@ PARTIAL_LABEL_PROFILES = {
 AVAILABLE_DATAMODULES = {
     'sup': CROHMESupvervisedDatamodule,
     'ora': CROHMEFixMatchOracleDatamodule,
-    'fx': CROHMEFixMatchInterleavedDatamodule
+    'fx': CROHMEFixMatchInterleavedDatamodule,
+    'fx_td': CROHMEFixMatchInterleavedTestAsUnlabeledDatamodule
 }
 # GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS = {
 #     'none': [],
