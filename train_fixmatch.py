@@ -1,12 +1,11 @@
 import logging
+import pprint
 import re
 import sys
 from datetime import datetime
 
 import torch
 from jsonargparse import CLI
-import pprint
-
 from pytorch_lightning import seed_everything
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 
@@ -16,7 +15,6 @@ from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatc
 from comer.datamodules.hme100k.variants.interleaved import HMEInterleavedDatamodule
 from comer.datamodules.hme100k.variants.supervised import HMESupvervisedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
-
 from comer.utils.conf_measures import CONF_MEASURES
 from model_lookups import AVAILABLE_MODELS, POSSIBLE_CP_SHORTCUTS
 
@@ -26,6 +24,13 @@ LEARNING_PROFILES = {
         'learning_rate': 0.08,
         'learning_rate_target': 8e-5,
         'steplr_steps': 8,
+        'check_val_every_n_epoch': 1
+    },
+    'initial_hme': {
+        'epochs': 50,
+        'learning_rate': 0.04,
+        'learning_rate_target': 8e-5,
+        'steplr_steps': 10,
         'check_val_every_n_epoch': 1
     },
     'initial_val2': {
@@ -144,7 +149,7 @@ def main(
 
     assert pct > 0.0 and pct <= 1.0
 
-    includes_st = dm != 'sup'
+    includes_st = not dm.endswith('sup')
     is_ln = model.startswith('ln')
     is_partial = len(pprof) > 0
 
