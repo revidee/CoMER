@@ -1,5 +1,4 @@
 from typing import Optional, Any
-from zipfile import ZipFile
 
 import numpy as np
 
@@ -15,7 +14,7 @@ from comer.datamodules.hme100k.vocab import vocab
 from comer.datamodules.oracle import Oracle
 
 
-class HMEInterleavedDatamodule(CROHMEFixMatchInterleavedDatamodule):
+class HMEInterleavedTestAsUnlabeledDatamodule(CROHMEFixMatchInterleavedDatamodule):
 
     def __init__(self, limit_val: int = 1000, **kwargs):
         super().__init__(**kwargs)
@@ -36,6 +35,9 @@ class HMEInterleavedDatamodule(CROHMEFixMatchInterleavedDatamodule):
             )
             self.labeled_data, self.unlabeled_data = full_train_data[labeled_indices], full_train_data[
                 unlabeled_indices]
+
+            self.unlabeled_data = np.append(self.unlabeled_data, extract_data_entries(self.zipfile_path, "test"))
+
 
             # unlabeled train-split, used in the "pseudo-labeling" step
             # this uses the same batch size as the eval step, since inference requires more VRAM

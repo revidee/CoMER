@@ -15,6 +15,7 @@ from comer.datamodules.crohme.variants.fixmatch_interleaved import CROHMEFixMatc
 from comer.datamodules.crohme.variants.interleaved_test_as_unlabeled import \
     CROHMEFixMatchInterleavedTestAsUnlabeledDatamodule
 from comer.datamodules.hme100k.variants.interleaved import HMEInterleavedDatamodule
+from comer.datamodules.hme100k.variants.interleaved_test_as_unlabeled import HMEInterleavedTestAsUnlabeledDatamodule
 from comer.datamodules.hme100k.variants.supervised import HMESupvervisedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
 from comer.utils.conf_measures import CONF_MEASURES
@@ -94,7 +95,8 @@ AVAILABLE_DATAMODULES = {
     'fx': CROHMEFixMatchInterleavedDatamodule,
     'fx_td': CROHMEFixMatchInterleavedTestAsUnlabeledDatamodule,
     'hme_sup': HMESupvervisedDatamodule,
-    'hme_fx': HMEInterleavedDatamodule
+    'hme_fx': HMEInterleavedDatamodule,
+    'hme_fx_td': HMEInterleavedTestAsUnlabeledDatamodule
 }
 # GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS = {
 #     'none': [],
