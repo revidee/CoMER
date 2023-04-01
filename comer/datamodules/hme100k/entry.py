@@ -73,13 +73,18 @@ def extract_data_entries(main_path: str,
             np.random.seed(seed)
             picked_labels = dict()
 
-            for (name, s) in subsets.items():
-                limit_per_subset = math.floor(len(s) * limit / total_original)
-                compatible_sets[name] = np.array(compatible_sets[name])
-                np.random.shuffle(compatible_sets[name])
-                for fname in compatible_sets[name][:limit_per_subset]:
+            if subsets is not None:
+                for (name, s) in subsets.items():
+                    limit_per_subset = math.floor(len(s) * limit / total_original)
+                    compatible_sets[name] = np.array(compatible_sets[name])
+                    np.random.shuffle(compatible_sets[name])
+                    for fname in compatible_sets[name][:limit_per_subset]:
+                        picked_labels[fname] = all_labels[fname]
+            else:
+                filenames = np.array(list(all_labels.keys()))
+                np.random.shuffle(filenames)
+                for fname in filenames[:limit]:
                     picked_labels[fname] = all_labels[fname]
-
             all_labels = picked_labels
         printed = 0
         done = 0
@@ -110,5 +115,6 @@ def extract_data_entries(main_path: str,
         return np.array(data)
 
 if __name__ == '__main__':
-    train, test, sets = get_hme_subsets(ZipFile('C:/Users/marca/Desktop/Master/HME100K.zip'))
-    extract_data_entries(test, 'test', 10, sets)
+    sets = get_hme_subsets('C:/Users/marca/Desktop/Master/hme/')
+    for entry in extract_data_entries('C:/Users/marca/Desktop/Master/hme/', 'train', 10):
+        print(entry.file_name, entry.label, entry)
