@@ -15,7 +15,7 @@ class CROHMEFixMatchInterleavedDatamodule(CROHMEFixMatchDatamodule):
     def setup(self, stage: Optional[str] = None) -> None:
         with ZipFile(self.zipfile_path) as archive:
             if stage == "fit" or stage is None:
-                assert 0.0 < self.unlabeled_pct < 1.0
+                assert 0.0 <= self.unlabeled_pct <= 1.0
                 full_train_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train")
 
                 labeled_indices, unlabeled_indices = get_splitted_indices(
