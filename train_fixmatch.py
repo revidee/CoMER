@@ -17,6 +17,7 @@ from comer.datamodules.crohme.variants.interleaved_test_as_unlabeled import \
 from comer.datamodules.hme100k.variants.interleaved import HMEInterleavedDatamodule
 from comer.datamodules.hme100k.variants.interleaved_test_as_unlabeled import HMEInterleavedTestAsUnlabeledDatamodule
 from comer.datamodules.hme100k.variants.supervised import HMESupvervisedDatamodule
+from comer.datamodules.ntcir.variants.supervised import NTCIRSupervisedDatamodule
 from comer.lit_extensions import UnlabeledValidationExtraStepTrainer, DDPUnlabeledStrategy
 from comer.utils.conf_measures import CONF_MEASURES
 from model_lookups import AVAILABLE_MODELS, POSSIBLE_CP_SHORTCUTS
@@ -96,7 +97,8 @@ AVAILABLE_DATAMODULES = {
     'fx_td': CROHMEFixMatchInterleavedTestAsUnlabeledDatamodule,
     'hme_sup': HMESupvervisedDatamodule,
     'hme_fx': HMEInterleavedDatamodule,
-    'hme_fx_td': HMEInterleavedTestAsUnlabeledDatamodule
+    'hme_fx_td': HMEInterleavedTestAsUnlabeledDatamodule,
+    'syn_sup': NTCIRSupervisedDatamodule,
 }
 # GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS = {
 #     'none': [],
@@ -178,7 +180,7 @@ def main(
     used_vocab = 'crohme'
     if model.startswith("hme_"):
         used_vocab = 'hme'
-    dm_class = AVAILABLE_DATAMODULES[dm]
+
 
     logging.getLogger().setLevel(logging.INFO)
     logging.getLogger().addHandler(
@@ -224,6 +226,20 @@ def main(
     )
     # dm = CROHMEFixMatchOracleDatamodule(
     # dm = CROHMEFixMatchInterleavedDatamodule(
+    dm_class = AVAILABLE_DATAMODULES[dm]
+    dm_kwargs = {
+        'test_year': '2019',
+        'val_year': '2019',
+        'eval_batch_size': eval_bs,
+        'zipfile_path': data,
+        'num_workers': 5,
+        'unlabeled_pct': 1.0-pct,
+        'train_sorting': 1,
+    }
+    if dm.startswith('syn_'):
+        dm_kwargs.update(**{
+            'vocab': used_vocab
+        })
     dm = dm_class(
         test_year='2019',
         val_year='2019',

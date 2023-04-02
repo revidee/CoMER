@@ -113,8 +113,3 @@ def extract_data_entries(main_path: str,
         # logging.info(f"Extract data from: {prefix}, with data size: {len(data)}")
 
         return np.array(data)
-
-if __name__ == '__main__':
-    sets = get_hme_subsets('C:/Users/marca/Desktop/Master/hme/')
-    for entry in extract_data_entries('C:/Users/marca/Desktop/Master/hme/', 'train', 10):
-        print(entry.file_name, entry.label, entry)
