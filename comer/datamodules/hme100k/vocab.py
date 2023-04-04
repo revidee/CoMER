@@ -1,3 +1,4 @@
+from __future__ import annotations
 import os
 from functools import lru_cache
 
@@ -14,5 +15,15 @@ class HMEVocab(CROHMEVocab):
         super().__init__(dict_path)
 
 
+
+def replace_textcircled_label(label: list[str]) -> list[str]:
+    textcircled = '\\textcircled'
+    text = '\\text'
+    if textcircled in label:
+        for i, token in enumerate(label):
+            if token == textcircled:
+                label[i] = text
+
+    return label
 
 vocab = HMEVocab()

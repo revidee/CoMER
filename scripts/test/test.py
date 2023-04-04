@@ -1,3 +1,4 @@
+import os
 
 import torch
 from jsonargparse import CLI
@@ -5,6 +6,8 @@ from jsonargparse import CLI
 from comer.datamodules import CROHMESupvervisedDatamodule
 
 from pytorch_lightning import Trainer, seed_everything
+
+from comer.datamodules.hme100k.variants.supervised import HMESupvervisedDatamodule
 from model_lookups import AVAILABLE_MODELS
 
 
@@ -14,15 +17,18 @@ def main(
     gpu: int = 0,
     aug: str = "",
     seed: int = 7,
-    model: str = 'sup'
+    model: str = 'sup',
+    data: str = f"{os.path.dirname(os.path.realpath(__file__))}/../../data.zip"
 ):
     assert model in AVAILABLE_MODELS
+    usecrohme = not model.startswith("hme_")
     model = AVAILABLE_MODELS[model]
     seed_everything(seed)
     # generate output latex in result.zip
     trainer = Trainer(logger=False, accelerator='gpu', devices=[gpu])
 
-    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug)
+
+    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug, zipfile_path=data) if usecrohme else HMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug, zipfile_path=data)
 
     device = torch.device(f'cuda:{gpu}')
 

@@ -1,20 +1,23 @@
+from __future__ import annotations
+
 import logging
 import math
 import zipfile
 from typing import List, Tuple, Union
 
-import numpy as np
 import pytorch_lightning as pl
 import torch.optim as optim
 from pytorch_lightning.utilities import rank_zero_only
 from torch import FloatTensor, LongTensor
 
+from bench.gen_files import generate_text
 from comer.datamodules.crohme import Batch
+from comer.datamodules.crohme.vocab import vocab as vocabCROHME
+from comer.datamodules.hme100k.vocab import vocab as vocabHME
 from comer.model.comer import CoMER
 from comer.utils.utils import (ExpRateRecorder, Hypothesis, ce_loss,
                                to_bi_tgt_out)
-from comer.datamodules.crohme.vocab import vocab as vocabCROHME
-from comer.datamodules.hme100k.vocab import vocab as vocabHME
+
 
 class CoMERSupervised(pl.LightningModule):
     def __init__(
@@ -54,6 +57,7 @@ class CoMERSupervised(pl.LightningModule):
         self.save_hyperparameters(ignore=["temperature", "patience", "monitor"])
 
         assert vocab in ['hme', 'crohme']
+        self.vocab_name = vocab
         if vocab == 'hme':
             self.vocab = vocabHME
         else:
@@ -74,6 +78,10 @@ class CoMERSupervised(pl.LightningModule):
         )
 
         self.exprate_recorder = ExpRateRecorder()
+        if self.is_hme():
+            self.subset_exprate_recorders = dict()
+            for set in ["easy", "medium", "hard"]:
+                self.subset_exprate_recorders[set] = ExpRateRecorder()
         self.validation_global_pruning_overwrite = None
     def forward(
         self, img: FloatTensor, img_mask: LongTensor, tgt: LongTensor,
@@ -136,23 +144,38 @@ class CoMERSupervised(pl.LightningModule):
     def test_step(self, batch: Batch, _):
         hyps = self.approximate_joint_search(batch.imgs, batch.mask, global_pruning='none')
         self.exprate_recorder([h.seq for h in hyps], [label_tuple[1] for label_tuple in batch.labels])
+        if self.is_hme() and hasattr(self.trainer, "test_subsets"):
+            for i, label in enumerate(batch.labels):
+                fname = batch.img_bases[i]
+                for name, set in self.trainer.test_subsets.items():
+                    if fname in set:
+                        self.subset_exprate_recorders[name](hyps[i].seq, label[1])
+                        break
         return batch.img_bases, [self.vocab.indices2label(h.seq) for h in hyps], [len(h.seq) for h in hyps], [h.score for h in hyps]
 
     def test_epoch_end(self, test_outputs: List[Tuple[List[str], List[str], List[int], List[float]]]) -> None:
-        exprate = self.exprate_recorder.compute()
-        logging.info(f"Validation ExpRate: {exprate}")
-
-        with zipfile.ZipFile(f"result{self.hparams.test_suffix}.zip", "w") as zip_f:
-            for img_bases, preds, _, _ in test_outputs:
-                for img_base, pred in zip(img_bases, preds):
-                    content = f"%{img_base}\n${pred}$".encode()
-                    with zip_f.open(f"{img_base}.txt", "w") as f:
-                        f.write(content)
-        with open(f"stats{self.hparams.test_suffix}.txt", "w") as file:
-            for img_bases, preds, lens, scores in test_outputs:
-                for img_base, pred, length, score in zip(img_bases, preds, lens, scores):
-                    file.write(f"{img_base},{pred},{length},{score}\n")
-            file.close()
+        if self.is_hme():
+            exprate = self.exprate_recorder.compute()
+            logging.info(f"Test ExpRate (Total): {exprate * 100:.2f}")
+            for name, recorder in self.subset_exprate_recorders.items():
+                logging.info(f"Test ExpRate ({name}): {recorder.compute() * 100:.2f}")
+        else:
+            exprate = self.exprate_recorder.compute()
+            logging.info(f"Validation ExpRate: {exprate}")
+            with zipfile.ZipFile(f"result{self.hparams.test_suffix}.zip", "w") as zip_f:
+                for img_bases, preds, _, _ in test_outputs:
+                    for img_base, pred in zip(img_bases, preds):
+                        if self.is_hme():
+                            content = generate_text(img_base, pred).encode()
+                        else:
+                            content = f"%{img_base}\n${pred}$".encode()
+                        with zip_f.open(f"{img_base}.txt", "w") as f:
+                            f.write(content)
+            with open(f"stats{self.hparams.test_suffix}.txt", "w") as file:
+                for img_bases, preds, lens, scores in test_outputs:
+                    for img_base, pred, length, score in zip(img_bases, preds, lens, scores):
+                        file.write(f"{img_base},{pred},{length},{score}\n")
+                file.close()
     def approximate_joint_search(
             self, img: FloatTensor, mask: LongTensor, use_new: bool = True,
             save_logits: bool = False, debug=False, temperature=None, global_pruning: str = None
@@ -218,3 +241,6 @@ class CoMERSupervised(pl.LightningModule):
 
     def validation_dataloader_end(self, output):
         pass
+
+    def is_hme(self):
+        return self.vocab_name == "hme"

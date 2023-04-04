@@ -34,6 +34,7 @@ class HMESupvervisedDatamodule(CROHMESupvervisedDatamodule):
                 "",
             )
         if stage == "test" or stage is None:
+            self.trainer.test_subsets = sets
             self.test_dataset = CROHMEDataset(
                 build_dataset(self.zipfile_path, 'test',  self.eval_batch_size)[0],
                 self.test_aug,
