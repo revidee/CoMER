@@ -20,7 +20,8 @@ def main(
     aug: str = "",
     seed: int = 7,
     model: str = 'sup',
-    data: str = f"{os.path.dirname(os.path.realpath(__file__))}/../../data.zip"
+    data: str = f"{os.path.dirname(os.path.realpath(__file__))}/../../data.zip",
+    eval_batch_size: int = 4,
 ):
     assert model in AVAILABLE_MODELS
     usecrohme = not model.startswith("hme_")
@@ -32,7 +33,7 @@ def main(
     logging.getLogger().setLevel(logging.INFO)
     logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
-    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug, zipfile_path=data) if usecrohme else HMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug, zipfile_path=data)
+    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=eval_batch_size, test_aug=aug, zipfile_path=data) if usecrohme else HMESupvervisedDatamodule(test_year=year, eval_batch_size=eval_batch_size, test_aug=aug, zipfile_path=data)
 
     device = torch.device(f'cuda:{gpu}')
 
