@@ -101,15 +101,17 @@ AVAILABLE_DATAMODULES = {
     'syn_sup': NTCIRSupervisedDatamodule,
 }
 # GLOBAL_PRUNING_THRESHOLDS_FOR_EPOCHS_PRESETS = {
-#     'none': [],
-#     'sup': [(15, 0.8), (30, 0.4), (60, 0.1), (400, 0.05)],
-#     'st': [(30, 0.1), (400, 0.05)],
-#     'st2': [(30, 0.3), (400, 0.15)],
-#     'partial': [(400, 0.05)],
+#   'none': [],
+#   'sup': [(15, 0.8), (30, 0.4), (60, 0.1), (400, 0.05)],
+#   'sup_hme': [(2, 0.8), (10, 0.4), (15, 0.1), (25, 0.05)],
+#   'st': [(30, 0.1), (400, 0.05)],
+#   'st2': [(30, 0.3), (400, 0.15)],
+#   'partial': [(400, 0.05)],
 # }
 VALID_GLOBAL_PRUNING_MODES = [
     'none',
     'sup',
+    'sup_hme',
     'st',
     'st2',
     'partial',
