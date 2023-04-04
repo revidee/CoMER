@@ -1,4 +1,6 @@
+import logging
 import os
+import sys
 
 import torch
 from jsonargparse import CLI
@@ -27,6 +29,8 @@ def main(
     # generate output latex in result.zip
     trainer = Trainer(logger=False, accelerator='gpu', devices=[gpu])
 
+    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
     dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug, zipfile_path=data) if usecrohme else HMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug, zipfile_path=data)
 

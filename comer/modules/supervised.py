@@ -148,8 +148,9 @@ class CoMERSupervised(pl.LightningModule):
             for i, label in enumerate(batch.labels):
                 fname = batch.img_bases[i]
                 for name, set in self.trainer.test_subsets.items():
-                    if fname in set:
-                        self.subset_exprate_recorders[name](hyps[i].seq, label[1])
+                    stipped_fname = fname[:-4]
+                    if stipped_fname in set:
+                        self.subset_exprate_recorders[name]([hyps[i].seq], [label[1]])
                         break
         return batch.img_bases, [self.vocab.indices2label(h.seq) for h in hyps], [len(h.seq) for h in hyps], [h.score for h in hyps]
 
