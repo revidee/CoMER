@@ -1,6 +1,9 @@
 import logging
 import math
+import os
+import time
 import zipfile
+from pathlib import Path
 from typing import List, Tuple, Union
 
 import numpy as np
@@ -199,7 +202,18 @@ class CoMERSupervised(pl.LightningModule):
         logging.info(f'Epoch {self.current_epoch}: ExpRate: {metrics[f"val_ExpRate{suffix}"]} loss: {metrics[f"val_loss{suffix}"]}{ts_log_str}')
 
     @rank_zero_only
+    def on_validation_epoch_start(self):
+        self.val_start = time.time()
+    @rank_zero_only
     def on_validation_epoch_end(self):
+        if hasattr(self, "val_start") and self.val_start is not None:
+            total_time = time.time() - self.val_start
+            val_time_file = Path(os.path.join(self.logger.log_dir, 'val_time.csv'))
+            if not val_time_file.is_file():
+                val_time_file.touch(exist_ok=True)
+            f = val_time_file.open('a')
+            np.savetxt(f, np.array(total_time), fmt='%.i', delimiter=', ')
+            f.close()
         metrics = self.trainer.callback_metrics
         if 'val_ExpRate' in metrics:
             self.log_stats_from_dl_suffix()
