@@ -37,6 +37,13 @@ LEARNING_PROFILES = {
         'steplr_steps': 10,
         'check_val_every_n_epoch': 1
     },
+    'initial_hme_pre': {
+        'epochs': 250,
+        'learning_rate': 0.04,
+        'learning_rate_target': 8e-5,
+        'steplr_steps': 24,
+        'check_val_every_n_epoch': 1
+    },
     'initial_val2': {
         'epochs': 400,
         'learning_rate': 0.08,
