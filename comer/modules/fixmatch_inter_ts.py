@@ -19,10 +19,12 @@ class CoMERFixMatchInterleavedTemperatureScaling(CoMERFixMatchInterleaved):
 
     def __init__(
             self,
+            th_optim_correct_weight: float = None,
+            th_optim_sharpening: float = None,
             **kwargs
     ):
         super().__init__(**kwargs)
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["th_optim_sharpening","th_optim_correct_weight"])
         self.register_buffer("current_temperature", torch.ones(1) * 1.0, True)
         self.verbose_temp_scale = False
 

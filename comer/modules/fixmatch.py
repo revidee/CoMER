@@ -23,7 +23,7 @@ class CoMERFixMatch(CoMERSelfTraining):
 
     def __init__(
             self,
-            lambda_u: float,
+            lambda_u: float = 1.0,
             partial_labeling_enabled: bool = False,
             partial_labeling_only_below_normal_threshold: bool = False,
             partial_labeling_min_conf: float = 0.0,
