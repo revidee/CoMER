@@ -10,7 +10,8 @@ def th_fn_ori(hyp, th):
 
 
 def score_min(hyp: Hypothesis):
-    return min(hyp.history)
+    seq_len = len(hyp.seq)
+    return min(hyp.history) if seq_len else float('-Inf')
 
 
 def th_fn_min(hyp: Hypothesis, th):
