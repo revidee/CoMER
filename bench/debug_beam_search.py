@@ -15,16 +15,20 @@ from pytorch_lightning import seed_everything
 
 from comer.datamodules import Oracle
 from comer.datamodules.crohme import extract_data_entries, vocab
-from comer.datamodules.crohme.batch import build_batches_from_samples, Batch, get_splitted_indices, BatchTuple
+from comer.datamodules.crohme.batch import build_batches_from_samples, Batch, get_splitted_indices, BatchTuple, \
+    build_interleaved_batches_from_samples
 from comer.datamodules.crohme.variants.collate import collate_fn
 from comer.datamodules.oracle import general_levenshtein
-from comer.modules import CoMERFixMatchInterleavedLogitNormTempScale, CoMERSupervised
+from comer.modules import CoMERFixMatchInterleavedTemperatureScaling, CoMERSupervised, \
+    CoMERFixMatchInterleavedLogitNormTempScale
 from comer.utils import ECELoss
 from comer.utils.conf_measures import th_fn_bimin, score_ori, score_bimin, score_avg, score_rev_avg, score_bisum, \
     score_bisum_avg, score_bi_avg, score_sum, score_min
 from comer.utils.utils import Hypothesis
 from operator import ne
 from itertools import compress, count
+
+from model_lookups import POSSIBLE_CP_SHORTCUTS
 
 # checkpoint_path = "./bench/epoch3.ckpt"
 checkpoint_path = './lightning_logs/version_48/checkpoints/ep=251-st=51982-valLoss=0.3578.ckpt'
@@ -82,8 +86,8 @@ def main(gpu: int = -1):
         device = torch.device(f"cuda:{gpu}")
 
     with torch.no_grad():
-        # model: CoMERFixMatchInterleavedLogitNormTempScale\
-        #     = CoMERFixMatchInterleavedLogitNormTempScale.load_from_checkpoint("./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt", temperature=100)
+        # model: CoMERFixMatchInterleavedTemperatureScaling\
+        #     = CoMERFixMatchInterleavedTemperatureScaling.load_from_checkpoint(POSSIBLE_CP_SHORTCUTS['syn_15'], global_pruning_mode="none")
         # model = model.eval().to(device)
         # model.share_memory()
         #
@@ -93,52 +97,114 @@ def main(gpu: int = -1):
             seed_everything(7)
             full_data: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "train",
                                                                                      to_device=device)
-            labeled_indices, unlabeled_indices = get_splitted_indices(
-                full_data,
-                unlabeled_pct=0.65,
-                sorting_mode=1
-            )
+            # labeled_indices, unlabeled_indices = get_splitted_indices(
+            #     full_data,
+            #     unlabeled_pct=0.65,
+            #     sorting_mode=1
+            # )
             full_data_test: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "2019",
                                                                                           to_device=device)
+
             test_batches = build_batches_from_samples(
                 full_data_test,
                 4
             )
 
+            # batches = build_interleaved_batches_from_samples(
+            #     full_data[labeled_indices],
+            #     full_data[unlabeled_indices],
+            #     4
+            # )
+
+            # batch_tuple: List[BatchTuple] = build_batches_from_samples(
+            #     entries,
+            #     4,
+            #     batch_imagesize=(2200 * 250 * 4),
+            #     max_imagesize=(2200 * 250),
+            #     include_last_only_full=True
+            # )[::-1]
+            #
             # generate_hyps(
             #     [
+            #         #     (
+            #         #         "./lightning_logs/version_64/checkpoints/optimized_ts_0.5146.ckpt",
+            #         #         CoMERFixMatchInterleavedLogitNormTempScale,
+            #         #         "hyps_s_ln35_new_original_t002"
+            #         #     ),
+            #         # (
+            #         #     "./lightning_logs/version_65/checkpoints/optimized_ts_0.5505.ckpt",
+            #         #     CoMERFixMatchInterleavedLogitNormTempScale,
+            #         #     "hyps_s_ln35_new_original_t005"
+            #         # ),
+            #         #     (
+            #         #     "./lightning_logs/version_66/checkpoints/optimized_ts_0.5421.ckpt",
+            #         #     CoMERFixMatchInterleavedLogitNormTempScale,
+            #         #     "hyps_s_ln35_new_original_t01"
+            #         # ),
+            #         # (
+            #         #     "./lightning_logs/version_67/checkpoints/optimized_ts_0.5038.ckpt",
+            #         #     CoMERFixMatchInterleavedLogitNormTempScale,
+            #         #     "hyps_s_ln35_new_original_t02"
+            #         # ), (
+            #         #     "./lightning_logs/version_68/checkpoints/optimized_ts_0.4829.ckpt",
+            #         #     CoMERFixMatchInterleavedLogitNormTempScale,
+            #         #     "hyps_s_ln35_new_original_t05"
+            #         # ), (
+            #         #     "./lightning_logs/version_69/checkpoints/optimized_ts_0.556297.ckpt",
+            #         #     CoMERFixMatchInterleavedLogitNormTempScale,
+            #         #     "hyps_s_ln35_new_original_t0075"
+            #         # ), (
+            #         #     "./lightning_logs/version_70/checkpoints/optimized_ts_0.5405.ckpt",
+            #         #     CoMERFixMatchInterleavedLogitNormTempScale,
+            #         #     "hyps_s_ln35_new_original_t004"
+            #         # ),
             #         (
-            #             "./lightning_logs/version_21/checkpoints/epoch=289-step=64960-val_ExpRate=0.3628.ckpt",
-            #             CoMERSupervised,
-            #             "hyps_s_15_new_original"
-            #         )
+            #             "./lightning_logs/version_71/checkpoints/optimized_ts_0.5338.ckpt",
+            #             CoMERFixMatchInterleavedLogitNormTempScale,
+            #             "hyps_s_ln35_new_original_t00625"
+            #         ),
             #     ],
             #     [
             #         ('_test', test_batches)
             #     ],
             #     device,
+            #     [1]
             # )
             oracle = Oracle(full_data)
             oracle.add_data(full_data_test)
 
-            # confidence_measure_ap_ece_table(
-            #     [
-            #         torch.load("../hyps_s_100_new_original_test.pt", map_location=torch.device('cpu')),
-            #         torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
-            #         torch.load("../hyps_s_15_new_original_test.pt", map_location=torch.device('cpu')),
-            #     ],
-            #     oracle
-            # )
+            confidence_measure_ap_ece_table(
+                [
+                    torch.load("../hyps_s_ln35_new_original_t00625_1_test.pt", map_location=torch.device('cpu')),
+                    torch.load("../hyps_s_ln35_new_original_t00625_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_ln35_new_original_t002_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_ln35_new_original_t004_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_ln35_new_original_t00625_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_ln35_new_original_t0075_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_ln35_new_original_t01_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_ln35_new_original_t002_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_1.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_ts_ce.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_ts_both.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_ts_ce_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_ts_ece_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_ts_both_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_100_new_original_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
+                    # torch.load("../hyps_s_15_new_original_test.pt", map_location=torch.device('cpu')),
+                ],
+                oracle
+            )
 
             # eval_sorting_score(oracle, True, 1.0, True)
 
-
-
-            font_size = 28
-            dpi = 96
-            # dpi = 120
-            fig_size_px = (1920, 1080)
-            matplotlib.rcParams.update({'font.size': font_size})
+            # font_size = 28
+            # dpi = 96
+            # # dpi = 120
+            # fig_size_px = (1920, 1080)
+            # matplotlib.rcParams.update({'font.size': font_size})
             # fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
 
             # hyps_base = torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu'))
@@ -146,7 +212,6 @@ def main(gpu: int = -1):
             # hyps_base = torch.load("../hyps_s_35_new_original_1.pt", map_location=torch.device('cpu'))
             # hyps_base = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
             # hyps_ln = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
-
 
             # calc_tp_as_all_correct = True
             #
@@ -187,54 +252,51 @@ def main(gpu: int = -1):
             # axes.set_ylim((0.52, 1.03))
             # plt.savefig("ap_plot_3_confs_35_test_only_corr.pdf", format="pdf")
 
-
-            fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
-            lw = 2.5
-
-            x =         [100,   75,     65,     55,     50,     40,     35,     30,     25,     20,     15]
-            exp_14 =    [57.00, 57.81,  56.29,  51.83,  52.53,  49.70,  48.28,  45.94,  43.81,  42.80,  37.12]
-            exp_16 =    [59.98, 58.06,  58.24,  55.71,  53.36,  53.36,  51.00,  48.82,  47.52,  44.99,  39.06]
-            exp_19 =    [63.39, 61.88,  61.05,  60.13,  59.22,  56.30,  54.55,  53.46,  50.46,  48.37,  40.53]
-
-            oracle_x = [75, 50, 25, 15]
-            oracle_14 = [56.29, 52.94, 48.78, 43.00]
-            oracle_16 = [57.8, 55.45, 50.04, 42.72]
-            oracle_19 = [62.64, 59.47, 54.55, 47.21]
-
-            axes.plot(x, exp_14, color=matplotlib.colormaps['Reds'](0.85), linewidth=lw, label='Supervised 2014')
-            # axes.plot(x, exp_16, color=matplotlib.colormaps['Blues'](0.85), linewidth=lw, label='Supervised 2016')
-            # axes.plot(x, exp_19, color=matplotlib.colormaps['Greens'](0.85), linewidth=lw, label='Supervised 2019')
-
-            axes.plot(oracle_x, oracle_14, color=matplotlib.colormaps['Reds'](0.45), linewidth=lw, label='FixMatch Oracle 2014')
-            # axes.plot(oracle_x, oracle_16, color=matplotlib.colormaps['Blues'](0.45), linewidth=lw, label='FixMatch Oracle 2016')
-            # axes.plot(oracle_x, oracle_19, color=matplotlib.colormaps['Greens'](0.45), linewidth=lw, label='FixMatch Oracle 2019')
-
-            axes.legend(loc='lower left')
-            axes.set_xlim((100, 15))
-            axes.set_ylim((0, 65))
-            axes.set_xticks(x)
-            # for (xpos, ypos) in zip(x, exp_14):
-            #     axes.annotate(f"{ypos:.2f}", (xpos, ypos), fontsize=12)
-            for (normal, oracle) in zip([exp_14], [oracle_14]):
-                for (xpos, ypos) in zip(oracle_x, oracle):
-                    other_idx = x.index(xpos)
-                    diff = (ypos - normal[other_idx])
-                    axes.annotate(f"{'+' if diff > 0 else ''}{diff:.2f}", (xpos, ypos), fontsize=12)
-            # labels = [f"{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
-            # labels = [f"{(i+1)/len(accs):.2f})\n{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
-            # labels[-1] = f"1.0]\n{samples[-1]}"
-            axes.set_xticklabels(
-                [f"{tick}" for tick in x], rotation=0
-                # , fontdict={'fontfamily': 'Iosevka'}
-            )
-            axes.set_xlabel('% Train')
-            axes.set_ylabel('ExpRate-0')
-            # plt.show()
-            plt.savefig("exprate_plot_baselines_14.pdf", format="pdf")
+            # fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
+            # lw = 2.5
+            #
+            # x =         [100,   75,     65,     55,     50,     40,     35,     30,     25,     20,     15]
+            # exp_14 =    [57.00, 57.81,  56.29,  51.83,  52.53,  49.70,  48.28,  45.94,  43.81,  42.80,  37.12]
+            # exp_16 =    [59.98, 58.06,  58.24,  55.71,  53.36,  53.36,  51.00,  48.82,  47.52,  44.99,  39.06]
+            # exp_19 =    [63.39, 61.88,  61.05,  60.13,  59.22,  56.30,  54.55,  53.46,  50.46,  48.37,  40.53]
+            #
+            # oracle_x = [75, 50, 25, 15]
+            # oracle_14 = [56.29, 52.94, 48.78, 43.00]
+            # oracle_16 = [57.8, 55.45, 50.04, 42.72]
+            # oracle_19 = [62.64, 59.47, 54.55, 47.21]
+            #
+            # axes.plot(x, exp_14, color=matplotlib.colormaps['Reds'](0.85), linewidth=lw, label='Supervised 2014')
+            # # axes.plot(x, exp_16, color=matplotlib.colormaps['Blues'](0.85), linewidth=lw, label='Supervised 2016')
+            # # axes.plot(x, exp_19, color=matplotlib.colormaps['Greens'](0.85), linewidth=lw, label='Supervised 2019')
+            #
+            # axes.plot(oracle_x, oracle_14, color=matplotlib.colormaps['Reds'](0.45), linewidth=lw, label='FixMatch Oracle 2014')
+            # # axes.plot(oracle_x, oracle_16, color=matplotlib.colormaps['Blues'](0.45), linewidth=lw, label='FixMatch Oracle 2016')
+            # # axes.plot(oracle_x, oracle_19, color=matplotlib.colormaps['Greens'](0.45), linewidth=lw, label='FixMatch Oracle 2019')
+            #
+            # axes.legend(loc='lower left')
+            # axes.set_xlim((100, 15))
+            # axes.set_ylim((0, 65))
+            # axes.set_xticks(x)
+            # # for (xpos, ypos) in zip(x, exp_14):
+            # #     axes.annotate(f"{ypos:.2f}", (xpos, ypos), fontsize=12)
+            # for (normal, oracle) in zip([exp_14], [oracle_14]):
+            #     for (xpos, ypos) in zip(oracle_x, oracle):
+            #         other_idx = x.index(xpos)
+            #         diff = (ypos - normal[other_idx])
+            #         axes.annotate(f"{'+' if diff > 0 else ''}{diff:.2f}", (xpos, ypos), fontsize=12)
+            # # labels = [f"{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
+            # # labels = [f"{(i+1)/len(accs):.2f})\n{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
+            # # labels[-1] = f"1.0]\n{samples[-1]}"
+            # axes.set_xticklabels(
+            #     [f"{tick}" for tick in x], rotation=0
+            #     # , fontdict={'fontfamily': 'Iosevka'}
+            # )
+            # axes.set_xlabel('% Train')
+            # axes.set_ylabel('ExpRate-0')
+            # # plt.show()
+            # plt.savefig("exprate_plot_baselines_14.pdf", format="pdf")
 
             # hyps_s_35_new_original_1.pt
-
-
 
             # hyps: Dict[str, Hypothesis] = torch.load("../hyps_s_35_new_original_ts_ece.pt",
             #                                              map_location=torch.device('cpu'))
@@ -883,6 +945,7 @@ def full(batch: Batch, model, shapes, use_new: bool = False):
 def gauss_sum(n):
     return n * (n + 1) / 2
 
+
 def masked_mean_var(logits):
     inputs = np.array(logits)
     idx = np.argmin(inputs)
@@ -895,12 +958,14 @@ def masked_mean_var(logits):
     var = power - m ** 2
     return m, var, idx, masked
 
+
 def get_best_l2r_data(hyp: Hypothesis):
     if hyp.was_l2r:
         return hyp.seq, hyp.history, hyp.best_rev
     else:
         best_idx = np.argmax(np.array(hyp.all_l2r_scores))
         return hyp.all_l2r_hyps[best_idx], hyp.all_l2r_history[best_idx], hyp.all_l2r_rev_scores[best_idx]
+
 
 def get_best_r2l_data(hyp: Hypothesis):
     if not hyp.was_l2r:
@@ -909,11 +974,12 @@ def get_best_r2l_data(hyp: Hypothesis):
         best_idx = np.argmax(np.array(hyp.all_r2l_scores))
         return hyp.all_r2l_hyps[best_idx], hyp.all_r2l_history[best_idx], hyp.all_r2l_rev_scores[best_idx]
 
+
 def partial_label(hyp: Hypothesis,
                   std_fac: float = 1.0,
                   fname: Union[str, None] = None,
                   oracle: Union[Oracle, None] = None,
-                  partial_mode = 0,
+                  partial_mode=0,
                   threshold: float = float('-Inf')) -> Tuple[bool, List[int], Union[List[int], None]]:
     if oracle is not None and fname is not None:
         label = oracle.get_gt_indices(fname)
@@ -932,7 +998,8 @@ def partial_label(hyp: Hypothesis,
         if label[-min_len:] == hyp.seq[-min_len:]:
             r2l_seq = hyp.seq[-min_len:]
         else:
-            first_mismatch_r2l = next(compress(count(), map(ne, reversed(label[-min_len:]), reversed(hyp.seq[-min_len:]))))
+            first_mismatch_r2l = next(
+                compress(count(), map(ne, reversed(label[-min_len:]), reversed(hyp.seq[-min_len:]))))
             r2l_seq = hyp.seq[hyp_len - first_mismatch_r2l:]
         return True, l2r_seq, r2l_seq
     if len(hyp.seq) < 2:
@@ -1009,7 +1076,6 @@ def partial_label(hyp: Hypothesis,
             if min_dev >= (std * std_fac):
                 l2r = l2r_hyp[:idx]
 
-
         r2l_hyp, r2l_hist, r2l_rev = get_best_r2l_data(hyp)
         r2l = r2l_hyp
 
@@ -1038,7 +1104,7 @@ def partial_label(hyp: Hypothesis,
             std = np.sqrt(var)
             min_dev = m - hyp.best_rev[idx]
             if min_dev >= (std * std_fac):
-                r2l = hyp.seq[idx+1:]
+                r2l = hyp.seq[idx + 1:]
         else:
             m, var, idx, _ = masked_mean_var(hyp.best_rev)
             std = np.sqrt(var)
@@ -1050,7 +1116,7 @@ def partial_label(hyp: Hypothesis,
             std = np.sqrt(var)
             min_dev = m - hyp.history[idx]
             if min_dev >= (std * std_fac):
-                r2l = hyp.seq[idx+1:]
+                r2l = hyp.seq[idx + 1:]
 
         return True, l2r, r2l
     elif partial_mode == 4:
@@ -1064,33 +1130,33 @@ def partial_label(hyp: Hypothesis,
         w = 3
 
         if hyp.was_l2r:
-            weighted_avgs = (w*np_hist + np_rev) / (w+1)
+            weighted_avgs = (w * np_hist + np_rev) / (w + 1)
             m, var, idx, _ = masked_mean_var(weighted_avgs)
             std = np.sqrt(var)
             min_dev = m - weighted_avgs[idx]
             if min_dev >= (std * std_fac):
                 l2r = hyp.seq[:idx]
 
-            weighted_avgs = (np_hist + w * np_rev) / (w+1)
+            weighted_avgs = (np_hist + w * np_rev) / (w + 1)
             m, var, idx, _ = masked_mean_var(weighted_avgs)
             std = np.sqrt(var)
             min_dev = m - weighted_avgs[idx]
             if min_dev >= (std * std_fac):
-                r2l = hyp.seq[idx+1:]
+                r2l = hyp.seq[idx + 1:]
         else:
-            weighted_avgs = (np_hist + w * np_rev) / (w+1)
+            weighted_avgs = (np_hist + w * np_rev) / (w + 1)
             m, var, idx, _ = masked_mean_var(weighted_avgs)
             std = np.sqrt(var)
             min_dev = m - weighted_avgs[idx]
             if min_dev >= (std * std_fac):
                 l2r = hyp.seq[:idx]
 
-            weighted_avgs = (w*np_hist + np_rev) / (w+1)
+            weighted_avgs = (w * np_hist + np_rev) / (w + 1)
             m, var, idx, _ = masked_mean_var(weighted_avgs)
             std = np.sqrt(var)
             min_dev = m - weighted_avgs[idx]
             if min_dev >= (std * std_fac):
-                r2l = hyp.seq[idx+1:]
+                r2l = hyp.seq[idx + 1:]
 
         return True, l2r, r2l
     elif partial_mode == 5:
@@ -1223,7 +1289,7 @@ def sorting_score(hyps, scoring_fn, oracle, partial: bool = False,
 
 def average_precision(hyps, scoring_fn, oracle,
                       partial_std_fac: Union[float, None] = None, use_oracle: bool = False,
-                      partial_mode = 0,
+                      partial_mode=0,
                       calc_tp_as_all_correct: bool = True,
                       partial_threshold: float = 1.0,
                       min_threshold: float = float('-Inf')
@@ -1320,10 +1386,10 @@ def average_precision(hyps, scoring_fn, oracle,
                     cumulative_fp += 1
         elif oracle.get_gt_indices(fname) == hyp[1]:
             cumulative_tp += partial_bidir
-            total_tokens += 2*len(ori_hyp)
+            total_tokens += 2 * len(ori_hyp)
         else:
             cumulative_fp += partial_bidir
-            total_tokens += 2*len(ori_hyp)
+            total_tokens += 2 * len(ori_hyp)
 
         precision = cumulative_tp / (cumulative_tp + cumulative_fp)
         recall = cumulative_tp / total_tp
@@ -1391,8 +1457,8 @@ def confidence_measure_ap_ece_table(hyps_from_cps: List[Dict[str, Hypothesis]], 
         def hyp_to_triplet(tuple: [str, Hypothesis]):
             seq_len = len(tuple[1].seq)
             return np.exp(sfn(tuple[1])) if seq_len else 0.0, tuple[1].seq, oracle.get_gt_indices(tuple[0])
-        return hyp_to_triplet
 
+        return hyp_to_triplet
 
     results = defaultdict(list)
     scoring_fns = [
@@ -1416,8 +1482,8 @@ def confidence_measure_ap_ece_table(hyps_from_cps: List[Dict[str, Hypothesis]], 
             )
             to_triplet = hyp_to_triplet_with_scoring(sfn, oracle)
             ece_score, acc = ece.ece_for_predictions(map(to_triplet, hyps.items()))
-            results[name].append(ece_score*100)
-            results[name].append(auc*100)
+            results[name].append(ece_score * 100)
+            results[name].append(auc * 100)
     stacked = np.vstack(list(results.values()))
     maxes = np.max(stacked, axis=0)
     mins = np.min(stacked, axis=0)
@@ -1430,12 +1496,11 @@ def confidence_measure_ap_ece_table(hyps_from_cps: List[Dict[str, Hypothesis]], 
             if i % 2:
                 compare_val = maxes
             if value == compare_val[i]:
-                row_string.append(f"$\\mathbf{{{value:.2f}}}$")
+                row_string.append(f"$\\mathbf{{{value:.1f}}}$")
             else:
-                row_string.append(f"${value:.2f}$")
+                row_string.append(f"${value:.1f}$")
 
         print(f"{name} & {' & '.join(row_string)}  \\\\ \\hline")
-
 
 
 def generate_hyps(checkpoints: List[Tuple[str, Any, str]],
@@ -1461,7 +1526,6 @@ def generate_hyps(checkpoints: List[Tuple[str, Any, str]],
             model.share_memory()
             print("model loaded")
 
-
             for (save_ds_suffix, set) in datasets_with_suffix:
                 for temp in temps:
                     save_path = f"{output_root}{name}{f'_{temp}' if temp is not None else ''}{save_ds_suffix}.pt"
@@ -1477,7 +1541,8 @@ def generate_hyps(checkpoints: List[Tuple[str, Any, str]],
                                 progress += 1
                             batch = collate_fn([batch_raw]).to(device=device)
                             hyps = model.approximate_joint_search(
-                                batch.imgs, batch.mask, use_new=True, debug=False, save_logits=False, temperature=temp
+                                batch.imgs, batch.mask, use_new=True, debug=False, save_logits=False, temperature=temp,
+                                global_pruning='none'
                             )
                             for i, hyp in enumerate(hyps):
                                 all_hyps[batch.img_bases[i]] = hyp
