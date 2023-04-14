@@ -70,6 +70,7 @@ set -- "${POSITIONAL_ARGS[@]}" # restore positional parameters
 if [ -z "$out_dir" ]; then
   out_dir='./eval_out'
 fi
+mkdir -p $out_dir
 
 if [ -z "$data_dir" ]; then
   data_dir='./data'
