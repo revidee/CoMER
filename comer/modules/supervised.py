@@ -212,7 +212,10 @@ class CoMERSupervised(pl.LightningModule):
             if not val_time_file.is_file():
                 val_time_file.touch(exist_ok=True)
             f = val_time_file.open('a')
-            np.savetxt(f, np.array(total_time), fmt='%.i', delimiter=', ')
+            epoch_and_time = np.zeros((1, 2), dtype=float)
+            epoch_and_time[0][0] = self.current_epoch
+            epoch_and_time[0][1] = total_time
+            np.savetxt(f, epoch_and_time, fmt='%.i', delimiter=', ')
             f.close()
         metrics = self.trainer.callback_metrics
         if 'val_ExpRate' in metrics:
