@@ -14,7 +14,7 @@ from matplotlib import pyplot as plt
 from pytorch_lightning import seed_everything
 
 from comer.datamodules import Oracle
-from comer.datamodules.crohme import extract_data_entries, vocab
+from comer.datamodules.crohme import extract_data_entries, vocab, DataEntry
 from comer.datamodules.crohme.batch import build_batches_from_samples, Batch, get_splitted_indices, BatchTuple, \
     build_interleaved_batches_from_samples
 from comer.datamodules.crohme.variants.collate import collate_fn
@@ -104,7 +104,7 @@ def main(gpu: int = -1):
             # )
             full_data_test: 'np.ndarray[Any, np.dtype[DataEntry]]' = extract_data_entries(archive, "2019",
                                                                                           to_device=device)
-
+            #
             test_batches = build_batches_from_samples(
                 full_data_test,
                 4
@@ -158,10 +158,15 @@ def main(gpu: int = -1):
             #         #     CoMERFixMatchInterleavedLogitNormTempScale,
             #         #     "hyps_s_ln35_new_original_t004"
             #         # ),
+            #         # (
+            #         #     "./lightning_logs/version_71/checkpoints/optimized_ts_0.5338.ckpt",
+            #         #     CoMERFixMatchInterleavedLogitNormTempScale,
+            #         #     "hyps_s_ln35_new_original_t00625"
+            #         # ),
             #         (
-            #             "./lightning_logs/version_71/checkpoints/optimized_ts_0.5338.ckpt",
-            #             CoMERFixMatchInterleavedLogitNormTempScale,
-            #             "hyps_s_ln35_new_original_t00625"
+            #             "./lightning_logs/version_16/checkpoints/epoch=275-step=209484-val_ExpRate=0.5947.ckpt",
+            #             CoMERSupervised,
+            #             "hyps_s_50_new_original"
             #         ),
             #     ],
             #     [
@@ -170,56 +175,62 @@ def main(gpu: int = -1):
             #     device,
             #     [1]
             # )
-            oracle = Oracle(full_data)
-            oracle.add_data(full_data_test)
-
-            confidence_measure_ap_ece_table(
-                [
-                    torch.load("../hyps_s_ln35_new_original_t00625_1_test.pt", map_location=torch.device('cpu')),
-                    torch.load("../hyps_s_ln35_new_original_t00625_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_ln35_new_original_t002_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_ln35_new_original_t004_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_ln35_new_original_t00625_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_ln35_new_original_t0075_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_ln35_new_original_t01_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_ln35_new_original_t002_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_1.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_ts_ce.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_ts_both.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_ts_ce_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_ts_ece_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_ts_both_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_100_new_original_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
-                    # torch.load("../hyps_s_15_new_original_test.pt", map_location=torch.device('cpu')),
-                ],
-                oracle
-            )
+            # oracle = Oracle(full_data_test)
+            # oracle = Oracle(full_data)
+            # oracle.add_data(full_data_test)
+            # #
+            # confidence_measure_ap_ece_table(
+            #     [
+            #         # torch.load("../hyps_s_ln35_new_original_t00625_1_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_ln35_new_original_t00625_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_ln35_new_original_t002_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_ln35_new_original_t004_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_ln35_new_original_t005_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_ln35_new_original_t00625_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_ln35_new_original_t0075_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_ln35_new_original_t01_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_ln35_new_original_t02_test.pt", map_location=torch.device('cpu')),
+            #         torch.load("../hyps_s_ln35_new_original_t05_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_ln35_new_original_t002_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_1.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_ts_ce.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_ts_both.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_ts_ce_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_ts_ece_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_ts_both_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_100_new_original_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu')),
+            #         # torch.load("../hyps_s_15_new_original_test.pt", map_location=torch.device('cpu')),
+            #     ],
+            #     oracle
+            # )
 
             # eval_sorting_score(oracle, True, 1.0, True)
 
-            # font_size = 28
-            # dpi = 96
-            # # dpi = 120
+            font_size = 42
+            dpi = 96
+            # dpi = 120
+            fig_size_px = (260*4, 250*4)
             # fig_size_px = (1920, 1080)
-            # matplotlib.rcParams.update({'font.size': font_size})
+            matplotlib.rcParams.update({'font.size': font_size})
             # fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
+            # fig.tight_layout(pad=1.3)
 
             # hyps_base = torch.load("../hyps_s_35_new_original_1_test.pt", map_location=torch.device('cpu'))
-            # hyps_base = torch.load("../hyps_s_35_new_original_ts_ce_test.pt", map_location=torch.device('cpu'))
-            # hyps_base = torch.load("../hyps_s_35_new_original_1.pt", map_location=torch.device('cpu'))
-            # hyps_base = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
-            # hyps_ln = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
-
+            # # # hyps_base = torch.load("../hyps_s_35_new_original_ts_ce_test.pt", map_location=torch.device('cpu'))
+            # # # hyps_base = torch.load("../hyps_s_35_new_original_1.pt", map_location=torch.device('cpu'))
+            # # # hyps_base = torch.load("../hyps_s_35_new_original_ts_ece.pt", map_location=torch.device('cpu'))
+            # # # hyps_ln = torch.load("../hyps_s_35_new_t0_1_opt.pt", map_location=torch.device('cpu'))
+            # #
             # calc_tp_as_all_correct = True
-            #
-            # # BIMIN, 3.5, partial 0
-            #
+            # # #
+            # # # # BIMIN, 3.5, partial 0
+            # # #
             # for (all_hyps, name, fn, partial_mode, fac, threshold, min_threshold, color) in [
             #     # (hyps_base, "ORI", score_ori, 5, 3.5, 0.5, 0.0, matplotlib.colormaps['Greens'](0.6)),
-            #     (hyps_base, "ORI", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Greens'](0.6)),
+            #     (hyps_base, "ORI", score_ori, 0, None, 0.0, 0.0, matplotlib.colormaps['Greens'](0.85)),
             #     # (hyps_base, "BIMIN (Partial)", score_bimin, 0, 0.0, 0.6, 0.0, matplotlib.colormaps['Reds'](0.6)),
             #     (hyps_base, "BIMIN", score_bimin, 0, None, 0.0, 0.0, matplotlib.colormaps['Reds'](0.6)),
             #     # (hyps_base, "BIMULT", score_bisum, 5, 3.5, 0.5, 0.0, matplotlib.colormaps['Blues'](0.6)),
@@ -248,12 +259,175 @@ def main(gpu: int = -1):
             #     visual = metrics.PrecisionRecallDisplay(precisions, recalls)
             #     # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}", color=colormap(color_range[0] - ((color_range[0] - color_range[1]) * zero_safe_division(fac_i, len(facs) - 1))))
             #     # visual.plot(ax=axes, name=f"{name} ({partial_mode}) {fac} ({skips} {zero_safe_division(skips*100, total):.1f}) AP={auc*100:.2f}, CORR={auc*100/max(recalls):.2f}", color=color)
-            #     visual.plot(ax=axes, name=f"{name} AP {auc*100:.2f}", color=color, linewidth=2)
-            # axes.set_ylim((0.52, 1.03))
-            # plt.savefig("ap_plot_3_confs_35_test_only_corr.pdf", format="pdf")
+            #     visual.plot(ax=axes, name=f"{name}, AP={auc*100:.1f}", color=color, linewidth=4.5)
+            #
+            # axes.set_title("35%")
+            # # plt.show()
+            # # axes[1].set_ylim((0.52, 1.03))
+            # axes.set_xlim((0.0, 1.0))
+            # plt.savefig("ap_ori_bimin_bimult_35_t1_all_corr.pdf", format="pdf")
 
+
+            # token_scores = np.zeros((len(vocab),))
+            # full_data_test: List[DataEntry]
+            # for test_entry in full_data:
+            #     for token in vocab.words2indices(test_entry.label):
+            #         token_scores[token] += 1
+            #
+            # gt_without_brackets = token_scores[3:-3] / token_scores[3:].sum()
+            #
+            # order = np.argsort(gt_without_brackets)[::-1]
+            #
             # fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
-            # lw = 2.5
+            # fig.tight_layout(pad=0.1)
+            # plt.gcf().subplots_adjust(left=0.15, top=0.95)
+            # def plot_token_dist(ax, dist, col, label="_", lw: float=2):
+            #     # lines = axes.step(range(len(dist)), dist[order], where="post")
+            #     lines = ax.step(range(len(dist)), dist, where="post")
+            #     lines[0].set_label(label)
+            #     for l in lines:
+            #         l.set(color=col, linewidth=lw)
+            #         # l = matplotlib.lines.Line2D([i, i+1], [dist[source_idx], dist[source_idx]], color=col, linewidth=lw)
+            #         # axes.add_line(l)
+            #         pass
+            #
+            # def plot_token_dist2(ax, dist, col):
+            #     # for i, source_idx in enumerate(order):
+            #     for i, am in enumerate(dist):
+            #         # ax.bar(i, dist[source_idx],
+            #         ax.bar(i, am,
+            #                color=col, width=1, align='edge', edgecolor="none")
+            #
+            #
+            #
+            #
+            # plot_token_dist2(axes, gt_without_brackets, "#aaaaaa")
+            # # plot_token_dist(axes, token_scores[3:], "#66666677")
+            #
+            # axes.set_xlim((0, len(vocab) - 6))
+            # axes.set_yscale("log")
+            # axes.set_ylim((0, 0.05))
+            # axes.set_xticks([])
+            # axes.set_xticklabels([])
+            # axes.set_xlabel("CROHME Alphabet")
+            # axes.set_ylabel("Rel. Vorkommen")
+            #
+            # base_path = "A:\Masterabeit\checkpoints"
+            # # versions = [243, 247, 245, 246]
+            # versions = [214, 215, 216, 217]
+            # versions_labels = ["0+Var", "1+Var", "2+Var", "3+Var"]
+            #
+            # LAST_EPOCHS = 100
+
+            # for i, version in enumerate(versions):
+            #     token_dist = np.loadtxt(os.path.join(base_path, f"version_{version}", "token_dist_per_epoch.csv"), dtype=float, delimiter=",")
+            #     len_dist = np.loadtxt(os.path.join(base_path, f"version_{version}", "len_dist_per_epoch.csv"), dtype=float, delimiter=",")
+            #
+            #     plot_token_dist(axes,
+            #                     token_dist[-LAST_EPOCHS:, 4:-3].mean(axis=0) / token_dist[-LAST_EPOCHS:, 4:].mean(axis=0).sum(),
+            #                     matplotlib.colormaps['Blues'](((i+1) / (len(versions)) * 0.7 + 0.2)), lw=1.5, label=versions_labels[i]
+            #                     )
+            # # get the legend object
+            # leg = axes.legend(loc="lower left")
+            #
+            # # change the line width for the legend
+            # for line in leg.get_lines():
+            #     line.set_linewidth(5.0)
+            # plt.savefig("token_dist_35_ora_var.pdf", format="pdf")
+
+
+
+            # versions = [248, 249, 250, 251]
+            # versions = [208, 209, 211, 213]
+            # versions_labels = ["0", "1", "2", "3"]
+            # for i, version in enumerate(versions):
+            #     token_dist = np.loadtxt(os.path.join(base_path, f"version_{version}", "token_dist_per_epoch.csv"), dtype=float, delimiter=",")
+            #     len_dist = np.loadtxt(os.path.join(base_path, f"version_{version}", "len_dist_per_epoch.csv"), dtype=float, delimiter=",")
+            #
+            #     plot_token_dist(axes,
+            #                     token_dist[-LAST_EPOCHS:, 4:-3].mean(axis=0) / token_dist[-LAST_EPOCHS:, 4:].mean(axis=0).sum(),
+            #                     matplotlib.colormaps['Reds'](((i+1) / (len(versions)) * 0.7 + 0.2)), lw=1.5, label=versions_labels[i]
+            #                     )
+            # # get the legend object
+            # leg = axes.legend(loc="lower left")
+            #
+            # # change the line width for the legend
+            # for line in leg.get_lines():
+            #     line.set_linewidth(5.0)
+            # plt.savefig("token_dist_35_ora_novar.pdf", format="pdf")
+
+
+            # LEN COMP
+            # syn_15_corr_lens = np.array([0, 0, 31, 196, 75, 108, 119, 88, 34, 72, 81, 80, 63, 52, 42, 59, 26, 45, 36, 40, 22, 30, 24, 35, 23, 28, 20, 20, 10, 14, 7, 8, 3, 10, 7, 5, 3, 6, 6, 5, 3, 8, 0, 4, 1, 3, 2, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 2, 0, 0,
+            #                              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            #                              0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            # s_15_corr_lens = np.array([0, 0, 29, 181, 66, 96, 108, 82, 28, 65, 70, 64, 45, 47, 37, 52, 20, 40, 27, 30, 17, 25, 18, 27, 16, 26, 13, 12, 8, 13, 4, 4, 5, 5, 4, 4, 1, 1, 1, 0, 1, 5, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            #                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            #                            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            # gt_2019_len = np.array([0, 1, 43, 297, 110, 158, 190, 142, 60, 115, 136, 139, 111, 120, 85, 147, 71, 95, 95, 101, 62, 83, 65, 94, 68, 88, 60, 55, 39, 40, 35, 24, 19, 32, 27, 40, 19, 28, 16, 17, 17, 26, 8, 13, 9, 9, 11, 5, 8, 8, 5, 13, 4, 8, 7, 5, 2, 4
+            #                            , 4, 4, 2, 2, 3, 5, 1, 1, 1, 1, 3, 1, 3, 0, 1, 1, 0, 3, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+            #                            , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+            #
+            # group = 5
+            # gt_2019_len = np.add.reduceat(gt_2019_len, np.arange(0, len(gt_2019_len), group))
+            # s_15_corr_lens = np.add.reduceat(s_15_corr_lens, np.arange(0, len(s_15_corr_lens), group))
+            # syn_15_corr_lens = np.add.reduceat(syn_15_corr_lens, np.arange(0, len(syn_15_corr_lens), group))
+            #
+            # # np.nan_to_num(correct_lens / total_lens)
+            # # plot_token_dist2(axes, gt_2019_len, "#aaaaaa")
+            # plot_token_dist(axes, np.nan_to_num(syn_15_corr_lens / gt_2019_len), matplotlib.colormaps['Greens'](0.65), label="Syn. 15%", lw=4.5)
+            # plot_token_dist(axes, np.nan_to_num(s_15_corr_lens / gt_2019_len), matplotlib.colormaps['Reds'](0.65), label="15%", lw=4.5)
+            #
+            #
+            #
+            #
+            # # axes.set_yscale("log")
+            # # axes.set_ylim((0, 1.0))
+            # axes.set_xlim((0, 15))
+            # axes.set_ylim((0, 1.0))
+            # axes.set_xlabel("Seq. Länge")
+            # axes.set_ylabel("Rel. Korrekt")
+            #
+            # axes.set_xticks([i * 3 for i in range(6)])
+            # axes.set_xticklabels([i * 3 * group for i in range(6)])
+            #
+            # # ax2 = axes.twinx()
+            # # ax2.set_ylim((0.0, 1.0))
+            # # plot_token_dist(ax2, np.nan_to_num(syn_15_corr_lens / gt_2019_len), matplotlib.colormaps['Greens'](0.65))
+            # # plot_token_dist(ax2, np.nan_to_num(s_15_corr_lens / gt_2019_len), matplotlib.colormaps['Reds'](0.65))
+            #
+            # leg = axes.legend(loc="upper right")
+            #
+            # # change the line width for the legend
+            # for line in leg.get_lines():
+            #     line.set_linewidth(5.0)
+            # plt.savefig("len_correct_comp_grouped5_alltest.pdf", format="pdf")
+
+
+            fig, axes = plt.subplots(1, figsize=(fig_size_px[0] / dpi, fig_size_px[1] / dpi))
+            fig.tight_layout(pad=1.8)
+            plt.gcf().subplots_adjust(left=0.2, top=0.9)
+            lw = 4.5
+
+            x = [0.02, 0.04, 0.05, 0.0625, 0.075, 0.1]
+            ece = [7.5, 5.4, 6.6, 4.5, 7.7, 16.4] # 0.075
+            expr = [51.209, 53.711, 54.796, 54.918, 55.213, 54.045]
+
+            axes.set_xlim((0.02, 0.1))
+            axes.set_xticks([0.02, 0.05, 0.075, 0.1])
+            axes.set_ylabel("ECE (MIN)", color=matplotlib.colormaps['Reds'](0.85))
+            axes.tick_params(axis='y', labelcolor=matplotlib.colormaps['Reds'](0.85))
+            axes.set_xlabel("LogitNorm T")
+
+            axes.plot(x, ece, color=matplotlib.colormaps['Reds'](0.85), linewidth=lw, label='ECE')
+            ax2 = axes.twinx()
+            ax2.set_ylabel("ExpRate-0", color=matplotlib.colormaps['Blues'](0.85))
+            ax2.tick_params(axis='y', labelcolor=matplotlib.colormaps['Blues'](0.85))
+            ax2.plot(x, expr, color=matplotlib.colormaps['Blues'](0.85), linewidth=lw, label='ExpRate-0')
+
+            plt.savefig("ln_param_search.pdf", format="pdf")
+            exit()
+
             #
             # x =         [100,   75,     65,     55,     50,     40,     35,     30,     25,     20,     15]
             # exp_14 =    [57.00, 57.81,  56.29,  51.83,  52.53,  49.70,  48.28,  45.94,  43.81,  42.80,  37.12]
@@ -265,36 +439,39 @@ def main(gpu: int = -1):
             # oracle_16 = [57.8, 55.45, 50.04, 42.72]
             # oracle_19 = [62.64, 59.47, 54.55, 47.21]
             #
-            # axes.plot(x, exp_14, color=matplotlib.colormaps['Reds'](0.85), linewidth=lw, label='Supervised 2014')
-            # # axes.plot(x, exp_16, color=matplotlib.colormaps['Blues'](0.85), linewidth=lw, label='Supervised 2016')
-            # # axes.plot(x, exp_19, color=matplotlib.colormaps['Greens'](0.85), linewidth=lw, label='Supervised 2019')
+            # axes.plot(x, exp_14, color=matplotlib.colormaps['Reds'](0.85), linewidth=lw, label='2014')
+            # axes.plot(x, exp_16, color=matplotlib.colormaps['Blues'](0.85), linewidth=lw, label='2016')
+            # axes.plot(x, exp_19, color=matplotlib.colormaps['Greens'](0.85), linewidth=lw, label='2019')
             #
-            # axes.plot(oracle_x, oracle_14, color=matplotlib.colormaps['Reds'](0.45), linewidth=lw, label='FixMatch Oracle 2014')
-            # # axes.plot(oracle_x, oracle_16, color=matplotlib.colormaps['Blues'](0.45), linewidth=lw, label='FixMatch Oracle 2016')
-            # # axes.plot(oracle_x, oracle_19, color=matplotlib.colormaps['Greens'](0.45), linewidth=lw, label='FixMatch Oracle 2019')
-            #
+            # # axes.plot(oracle_x, oracle_14, color=matplotlib.colormaps['Reds'](0.45), linewidth=lw, label='FixMatch Oracle 2014')
+            # # # axes.plot(oracle_x, oracle_16, color=matplotlib.colormaps['Blues'](0.45), linewidth=lw, label='FixMatch Oracle 2016')
+            # # # axes.plot(oracle_x, oracle_19, color=matplotlib.colormaps['Greens'](0.45), linewidth=lw, label='FixMatch Oracle 2019')
+            # #
             # axes.legend(loc='lower left')
-            # axes.set_xlim((100, 15))
+            # axes.set_xlim((0, 100))
             # axes.set_ylim((0, 65))
-            # axes.set_xticks(x)
-            # # for (xpos, ypos) in zip(x, exp_14):
-            # #     axes.annotate(f"{ypos:.2f}", (xpos, ypos), fontsize=12)
-            # for (normal, oracle) in zip([exp_14], [oracle_14]):
-            #     for (xpos, ypos) in zip(oracle_x, oracle):
-            #         other_idx = x.index(xpos)
-            #         diff = (ypos - normal[other_idx])
-            #         axes.annotate(f"{'+' if diff > 0 else ''}{diff:.2f}", (xpos, ypos), fontsize=12)
-            # # labels = [f"{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
-            # # labels = [f"{(i+1)/len(accs):.2f})\n{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
-            # # labels[-1] = f"1.0]\n{samples[-1]}"
+            # ticks = [25, 50, 75, 100]
+            # axes.set_xticks(ticks)
             # axes.set_xticklabels(
-            #     [f"{tick}" for tick in x], rotation=0
+            #     [f"{tick}" for tick in ticks], rotation=0
             #     # , fontdict={'fontfamily': 'Iosevka'}
             # )
-            # axes.set_xlabel('% Train')
-            # axes.set_ylabel('ExpRate-0')
+            # # for (xpos, ypos) in zip(x, exp_19):
+            # #     axes.annotate(f"{ypos:.1f}", (xpos, ypos), fontsize=12)
+            # # for (normal, oracle) in zip([exp_14], [oracle_14]):
+            # #     for (xpos, ypos) in zip(oracle_x, oracle):
+            # #         other_idx = x.index(xpos)
+            # #         diff = (ypos - normal[other_idx])
+            # #         axes.annotate(f"{'+' if diff > 0 else ''}{diff:.2f}", (xpos, ypos), fontsize=12)
+            # # # labels = [f"{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
+            # # # labels = [f"{(i+1)/len(accs):.2f})\n{samples_in_bin}" for (i, samples_in_bin) in enumerate(samples)]
+            # # # labels[-1] = f"1.0]\n{samples[-1]}"
+            #
+            # axes.set_xlabel('% Trainingsdaten')
+            # axes.set_ylabel('ExpRate 0')
+            # axes.grid(linewidth=1)
             # # plt.show()
-            # plt.savefig("exprate_plot_baselines_14.pdf", format="pdf")
+            # plt.savefig("exprate_all.pdf", format="pdf")
 
             # hyps_s_35_new_original_1.pt
 
