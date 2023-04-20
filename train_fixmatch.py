@@ -55,7 +55,21 @@ LEARNING_PROFILES = {
         'learning_rate_target': 4e-4,
         'steplr_steps': 5,
         'check_val_every_n_epoch': 2
-    }
+    },
+    'st3': {
+        'epochs': 190,
+        'learning_rate': 0.003,
+        'learning_rate_target': 8e-5,
+        'steplr_steps': 4,
+        'check_val_every_n_epoch': 2
+    },
+    'st4': {
+        'epochs': 60,
+        'learning_rate': 0.01,
+        'learning_rate_target': 8e-6,
+        'steplr_steps': 15,
+        'check_val_every_n_epoch': 2
+    },
 }
 PARTIAL_LABEL_PROFILES = {
     'high': {
@@ -195,7 +209,14 @@ def main(
                             monitor=f'val_ExpRate{monitor_suffix}',
                             mode='max',
                             filename=f'ep={{epoch}}-st={{step}}-loss={{val_loss{monitor_suffix}:.4f}}-exp={{val_ExpRate{monitor_suffix}:.4f}}',
-                            auto_insert_metric_name=False
+                            auto_insert_metric_name=False,
+                            save_on_train_epoch_end=True,
+                            ),
+            ModelCheckpoint(save_last=True,
+                            filename=f'ep={{epoch}}-st={{step}}-loss={{val_loss{monitor_suffix}:.4f}}-exp={{val_ExpRate{monitor_suffix}:.4f}}',
+                            auto_insert_metric_name=False,
+                            save_weights_only=True,
+                            save_on_train_epoch_end=True,
                             ),
             # ModelCheckpoint(save_top_k=1,
             #                 monitor=f'val_loss{monitor_suffix}',
