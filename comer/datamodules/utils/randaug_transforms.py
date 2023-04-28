@@ -47,6 +47,8 @@ def TranslateYabs(img, v):  # [-150, 150] => percentage: [-0.45, 0.45]
         v = -v
     return img.transform(img.size, PIL.Image.AFFINE, (1, 0, 0, 0, 1, v))
 
+def Scale(img: PIL.Image.Image, v):
+    return img.resize((int(round(img.size[0] * v)), int(round(img.size[1] * v))), PIL.Image.LINEAR)
 
 def Rotate(img, v):  # [-30, 30]
     assert -30 <= v <= 30

@@ -71,7 +71,14 @@ LEARNING_PROFILES = {
         'learning_rate_target': 4e-4,
         'steplr_steps': 5,
         'check_val_every_n_epoch': 2
-    }
+    },
+    'st4': {
+        'epochs': 70,
+        'learning_rate': 0.01,
+        'learning_rate_target': 8e-6,
+        'steplr_steps': 15,
+        'check_val_every_n_epoch': 2
+    },
 }
 PARTIAL_LABEL_PROFILES = {
     'high': {
@@ -143,6 +150,8 @@ def main(
         train_bs: int = 8,
         eval_bs: int = 4,
         data: str = 'data.zip',
+        unlabeled_weak: str = '',
+        unlabeled_strong: str = 'strong',
 ):
 
     assert model in AVAILABLE_MODELS
@@ -240,6 +249,7 @@ def main(
         'test_year': '2019',
         'val_year': '2019',
         'eval_batch_size': eval_bs,
+        "train_batch_size": train_bs,
         'zipfile_path': data,
         'num_workers': 5,
         'unlabeled_pct': 1.0-pct,
@@ -249,17 +259,13 @@ def main(
         dm_kwargs.update(**{
             'vocab': used_vocab
         })
+    if dm.find("fx") != -1:
+        dm_kwargs.update(**{
+            'unlabeled_strong_aug': unlabeled_strong,
+            'unlabeled_weak_aug': unlabeled_weak
+        })
     dm = dm_class(
-        test_year='2019',
-        val_year='2019',
-        eval_batch_size=eval_bs,
-        zipfile_path=data,
-        train_batch_size=train_bs,
-        num_workers=5,
-        unlabeled_pct=1.0-pct,
-        train_sorting=1,
-        # unlabeled_strong_aug="weak",
-        # unlabeled_weak_aug=""
+        **dm_kwargs
     )
 
     logging.info(f"Initiated Dataloader ({dm}) with {pct*100:.1f}% Labeled")

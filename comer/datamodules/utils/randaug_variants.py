@@ -1,5 +1,5 @@
 from comer.datamodules.utils.randaug_transforms import AutoContrast, Invert, Rotate, Equalize, Posterize, Solarize, SolarizeAdd, \
-    Color, Contrast, Brightness, Sharpness, ShearX, ShearY, TranslateXabs, TranslateYabs, TranslateY, TranslateX
+    Color, Contrast, Brightness, Sharpness, ShearX, ShearY, TranslateXabs, TranslateYabs, TranslateY, TranslateX, Scale
 
 
 def fixmatch_original():
@@ -27,18 +27,19 @@ def fixmatch_modified():
     return [
         # (AutoContrast, 0, 1),
         # (Equalize, 0, 1),
-        (Invert, 0, 1),
-        (Rotate, 0, 30),
+        # (Invert, 0, 1),
+        # (Rotate, 0, 30),
         # (Posterize, 0, 4),
         # (Solarize, 0, 256),
-        (SolarizeAdd, 0, 110),
+        # (SolarizeAdd, 0, 110),
         # (Color, 0.1, 1.9),
         # (Contrast, 0.1, 1.9),
-        (Brightness, 0.1, 1.9),
-        (Sharpness, 0.1, 1.9),
-        (ShearX, 0., 0.3),
-        (ShearY, 0., 0.3),
+        # (Brightness, 0.1, 1.9),
+        # (Sharpness, 0.1, 1.9),
+        # (ShearX, 0., 0.3),
+        # (ShearY, 0., 0.3),
         # (CutoutAbs, 0, 40),
-        (TranslateX, -0.1, 0.1),
-        (TranslateY, -0.1, 0.1),
+        (TranslateXabs, 0, 10),
+        (TranslateYabs, 0, 10),
+        (Scale, 0.7, 1.4)
     ]
