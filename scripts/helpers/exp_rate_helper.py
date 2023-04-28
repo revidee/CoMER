@@ -9,19 +9,40 @@ BASE_DIR = ""
 # extract ExpRate-0 from multiple versions and years and prints them below each other to create a table
 def main(base: str, years=None):
     if years is None:
-        years = ["2014", "2016", "2019"]
+        # years = ["2014", "2016", "2019"]
+        years = ["2016"]
 
     version_rows = [
-        [88, 228],
-        [270, 	265],
-        [276 , 	271],
-        [296, 	272]
+        # [191, 193, 88]
+        [128, 126, "25_ts", 66, "21_ts", 86],
+        [259, 341, 313, 337, 274, 326],
+        [260, 340, 314, 336, 182, 332],
+        [261, 339, 315, 335, 183, 331],
+        [262, 338, 316, 333, 185, 330],
+        # [191, 193, 88],
+        # [301, 310, 304],
+        # [306, 311, 307],
+        # [308, 312, 309],
+        # [88, 88, 88, 228, 228, 228],
+        # [171, 290, 285, 241, 237, 231],
+        # [300, 298, 280, 242, 238, 232],
+        # [299, 297, 279, 273, 239, 233],
+        # [289, 294, 277, 275, 240, 234]
     ]
     row_titles = [
         "Baseline",
-        "$\\tau=0.25$",
+        "$\\tau=0.95$",
+        "$\\tau=0.5$",
         "$\\tau=0.125$",
         "$\\tau=0.05$",
+        # "$\\tau=0.05$",
+        # "$\\tau_\\text{H}=0.125$",
+        # "$\\tau_\\text{M}=0.125$",
+        # "Syn. Baseline",
+        # "$\\tau=0.5$",
+        # "$\\tau=0.25$",
+        # "$\\tau=0.125$",
+        # "$\\tau=0.075$",
     ]
     # Oracle
     # version_rows = [
@@ -57,7 +78,7 @@ def main(base: str, years=None):
     for row_idx, (title, row) in enumerate(zip(row_titles, version_rows)):
         print(f'{title} & ', flush=True, end='')
         for col_idx in range(len(all_exps[row_idx])):
-            if max_row_idx_per_col[col_idx] == row_idx:
+            if max_row_idx_per_col[col_idx] == row_idx and len(row_titles) > 1:
                 print(f"$\\mathbf{{{all_exps[row_idx][col_idx]:.1f}}}$", flush=True, end='')
             else:
                 print(f"${all_exps[row_idx][col_idx]:.1f}$", flush=True, end='')

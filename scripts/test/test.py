@@ -1,3 +1,6 @@
+import logging
+import sys
+import time
 
 import torch
 from jsonargparse import CLI
@@ -19,10 +22,12 @@ def main(
     assert model in AVAILABLE_MODELS
     model = AVAILABLE_MODELS[model]
     seed_everything(seed)
+    logging.getLogger().setLevel(logging.INFO)
+    logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
     # generate output latex in result.zip
     trainer = Trainer(logger=False, accelerator='gpu', devices=[gpu])
 
-    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=4, test_aug=aug)
+    dm = CROHMESupvervisedDatamodule(test_year=year, eval_batch_size=1, test_aug=aug)
 
     device = torch.device(f'cuda:{gpu}')
 
@@ -30,8 +35,9 @@ def main(
         cp,
         test_suffix=f"{gpu}",
     ).to(device).eval()
-
+    now = time.time()
     trainer.test(model, datamodule=dm)
+    print(time.time() - now)
 
 
 if __name__ == '__main__':

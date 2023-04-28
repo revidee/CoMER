@@ -125,6 +125,9 @@ class CoMERSupervised(pl.LightningModule):
             on_epoch=True,
             batch_size=batch.imgs.shape[0]
         )
+    @rank_zero_only
+    def test_epoch_start(self):
+        self.test_start = time.time()
 
     def test_step(self, batch: Batch, _):
         hyps = self.approximate_joint_search(batch.imgs, batch.mask, global_pruning='none')
@@ -134,6 +137,16 @@ class CoMERSupervised(pl.LightningModule):
     def test_epoch_end(self, test_outputs: List[Tuple[List[str], List[str], List[int], List[float]]]) -> None:
         exprate = self.exprate_recorder.compute()
         logging.info(f"Validation ExpRate: {exprate}")
+        if hasattr(self, "test_start") and self.test_start is not None:
+            total_time = time.time() - self.test_start
+            time_file = Path(os.path.join(".", f'result{self.hparams.test_suffix}_times.txt'))
+            if not time_file.is_file():
+                time_file.touch(exist_ok=True)
+            f = time_file.open('a')
+            epoch_and_time = np.zeros((1, 1), dtype=float)
+            epoch_and_time[0][0] = total_time
+            np.savetxt(f, epoch_and_time, fmt='%.i', delimiter=', ')
+            f.close()
 
         with zipfile.ZipFile(f"result{self.hparams.test_suffix}.zip", "w") as zip_f:
             for img_bases, preds, _, _ in test_outputs:
@@ -163,7 +176,7 @@ class CoMERSupervised(pl.LightningModule):
             return self.comer_model.new_beam_search(img, mask, **hp, scoring_run=True, bi_dir=True,
                                                     save_logits=save_logits, debug=debug,
                                                     temperature=temperature, global_pruning=global_pruning)
-        return self.comer_model.beam_search(img, mask, **hp, scoring_run=True, bi_dir=True, debug=debug)
+        return self.comer_model.beam_search(img, mask, **hp, scoring_run=True, bi_dir=True, debug=debug, temperature=temperature)
 
 
     def configure_optimizers(self):
