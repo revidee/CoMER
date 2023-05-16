@@ -1,10 +1,39 @@
 <div align="center">    
  
-# CoMER: Modeling Coverage for Transformer-based Handwritten Mathematical Expression Recognition  
+# CoMER: Modeling Coverage for Transformer-based Handwritten Mathematical Expression Recognition 
+## With Semi-Supervised Learning Methods and HME100K Dataset support
+ 
+ Original Paper
  
 [![arXiv](https://img.shields.io/badge/arXiv-2207.04410-b31b1b.svg)](https://arxiv.org/abs/2207.04410)
 
+ Master Thesis adding different Methods
+ 
+ __to be published__
 </div>
+
+This repo expands the official implemention of [CoMER](https://github.com/Green-Wood/CoMER) and adds
+
+- Support for PyTorch 1.13 and PyTorch Lightning 1.19
+- Improved Beam-Search with Pruning Methods from [Freitag et al (Beam Search Strategies for Neural Machine Translation)](https://arxiv.org/abs/1702.01806)
+  - With the addition of Constant Pruning
+  - Improves inference speeds on CROHME19 Trainingdata roughly 7-fold
+- Self-Training Methods like [FixMatch](https://arxiv.org/abs/2001.07685)
+- Calibration Methods via learnable [Temperature Scaling](https://arxiv.org/abs/1706.04599) and [LogitNorm](https://arxiv.org/abs/2205.09310)
+- Multiple new Confidence Measures for further improving Calibration
+- [RandAug](https://arxiv.org/abs/1909.13719) with two augmentation lists, the modified version being better suited for long formulae
+- Support for different vocabularies
+- Support for synthetic Pre-Training with a generated NTCIR12 MathIR Dataset
+- Support for [HME100K Dataset](https://arxiv.org/abs/2203.01601)
+- A partial-labeling heuristic to replace a hard threshold while filtering generated pseudo-labels
+- Multi-GPU Evaluation support
+- Evaluation with Augmentations
+- Tools \& Scripts to Visualize the data, Test the implementation and benchmark the modified beam-search
+
+The Features are included in branches:
+- [feature/ssl](https://github.com/revidee/CoMER/tree/feature/ssl), no helpers (visualization), no HME100K support
+- [feature/ssl_hme](https://github.com/revidee/CoMER/tree/feature/ssl_hme), no helpers (visualization)
+- [feature/ssl_helpers](https://github.com/revidee/CoMER/tree/feature/ssl_helpers), no HME100K support
 
 ## Project structure
 ```bash
