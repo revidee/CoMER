@@ -12,7 +12,7 @@
  __to be published__
 </div>
 
-This repo expands the official implemention of [CoMER](https://github.com/Green-Wood/CoMER) and adds
+This repo expands the official implementation of [CoMER](https://github.com/Green-Wood/CoMER) and adds
 
 - Support for PyTorch 1.13 and PyTorch Lightning 1.19
 - Improved Beam-Search with Pruning Methods from [Freitag et al (Beam Search Strategies for Neural Machine Translation)](https://arxiv.org/abs/1702.01806)
