@@ -8,8 +8,8 @@
 [![arXiv](https://img.shields.io/badge/arXiv-2207.04410-b31b1b.svg)](https://arxiv.org/abs/2207.04410)
 
  Master Thesis adding different Methods
- 
- __to be published__
+
+ [Patrec @ TU Dortmund](https://patrec.cs.tu-dortmund.de/) - [Thesis](http://web.patrec.cs.tu-dortmund.de/pubs/theses/ma_ahlers.pdf)
 </div>
 
 This repo expands the official implementation of [CoMER](https://github.com/Green-Wood/CoMER) and adds
